@@ -535,9 +535,19 @@ that currently exist.
 
 ## Test Cases
 
-All 11 required conversations pass. The eval asserts against the **database**,
-not the wording of the reply — a model that says "logged it!" and writes nothing
-fails, and a model that phrases things differently still passes.
+All 11 required conversations pass — against the scripted double in CI, and
+**against live models** (`gpt-oss-20b` + `qwen3.8-27b` on Groq) with a real
+plate photo. The eval asserts against the **database**, not the wording of the
+reply — a model that says "logged it!" and writes nothing fails, and a model
+that phrases things differently still passes.
+
+The live run was not green first time, and that is the point of having it. Of
+the eleven, ten passed on the first real attempt; "same as yesterday" failed
+twice for two different, real reasons — a compound food string priced as one of
+its parts, then a date copied from `get_meals` that wrote the replay onto
+yesterday — and passed once both were fixed. Details under
+[Two real bugs the eval caught](#two-real-bugs-the-eval-caught) and in the
+commit history.
 
 Three layers of testing, each catching a different class of mistake:
 
@@ -577,7 +587,11 @@ not evidence of anything.
 
 ### Two real bugs the eval caught
 
-Worth recording, because both were silent-wrong-answer bugs rather than crashes:
+Worth recording, because both were silent-wrong-answer bugs rather than crashes.
+(The live-model runs later found four more of the same kind — an invented
+`ask_question` tool, an empty reply mid-task, "2 idli and sambar" priced as a
+lone bowl of sambar, and a replayed meal written onto yesterday's date. Each is
+a commit with its own test.)
 
 1. **Parallel tool calls lost data.** Running the suite 6× surfaced a ~1-in-20
    failure in case 4 — the only case issuing multiple `log_meal` calls in one
