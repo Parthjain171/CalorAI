@@ -2,4 +2,5 @@ langgraph>=0.2.60
 langchain-core>=0.3.28
 langchain-anthropic>=0.3.0
 langchain-openai>=0.2.14
+langchain-google-genai>=2.0.7
 python-dotenv>=1.0.1

@@ -86,7 +86,12 @@ def _encode(path: Path) -> tuple[str, str]:
 
 
 def _image_block(mime: str, data: str) -> Dict[str, Any]:
-    """Providers disagree on the multimodal block shape; normalise here."""
+    """Providers disagree on the multimodal block shape; normalise here.
+
+    Anthropic takes a native ``image`` block. Google (Gemini) and every
+    OpenAI-compatible host accept the ``image_url`` data-URL form, so they share
+    a branch.
+    """
     if provider_for(settings.vision_model) == "anthropic":
         return {
             "type": "image",

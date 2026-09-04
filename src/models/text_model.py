@@ -1,13 +1,27 @@
 """Chat model factory for the text (conversation + tool calling) path.
 
-The provider is inferred from the model id, so ``TEXT_MODEL=gpt-4o-mini`` and
-``TEXT_MODEL=claude-haiku-4-5`` both work without touching code. Clients are
-cached because constructing one sets up an HTTP connection pool — rebuilding it
-per turn adds avoidable latency to every message.
+The provider is inferred from the model id, so ``TEXT_MODEL=gemini-2.0-flash``,
+``TEXT_MODEL=gpt-4o-mini`` and ``TEXT_MODEL=claude-haiku-4-5`` all work without
+touching code.
+
+Three providers are supported, chosen so the project can run on a genuinely free
+key as well as a paid one:
+
+* ``claude-*``  -> Anthropic          (``ANTHROPIC_API_KEY``)
+* ``gemini-*``  -> Google AI Studio   (``GOOGLE_API_KEY``) — has a free tier
+* everything else -> an OpenAI-compatible endpoint (``OPENAI_API_KEY``, plus
+  ``OPENAI_BASE_URL`` to point at Groq, GitHub Models, OpenRouter, Ollama, …)
+
+The OpenAI-compatible branch is the escape hatch: any provider that speaks that
+wire format works by setting a base URL, with no code change here.
+
+Clients are cached because constructing one sets up an HTTP connection pool —
+rebuilding it per turn adds avoidable latency to every message.
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Any
 
@@ -17,21 +31,25 @@ from src.utils.config import settings
 
 
 def provider_for(model_id: str) -> str:
-    """Map a model id onto its provider."""
+    """Map a model id onto its provider.
+
+    Unknown ids fall through to the OpenAI-compatible client rather than
+    raising, because that is how Groq/OpenRouter/Ollama model names
+    (``llama-3.3-70b-versatile``, ``qwen2.5``) are meant to be reached.
+    """
     lowered = model_id.lower()
     if lowered.startswith("claude"):
         return "anthropic"
-    if lowered.startswith(("gpt", "o1", "o3", "o4", "chatgpt")):
-        return "openai"
-    raise ValueError(
-        f"Cannot infer a provider for model id {model_id!r}. "
-        "Use a claude-* or gpt-* id."
-    )
+    if lowered.startswith(("gemini", "models/gemini")):
+        return "google"
+    return "openai"
 
 
 @lru_cache(maxsize=8)
 def _build(model_id: str, temperature: float, max_tokens: int) -> BaseChatModel:
+    """Construct (and memoise) a chat client for one model id."""
     provider = provider_for(model_id)
+
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
@@ -43,14 +61,38 @@ def _build(model_id: str, temperature: float, max_tokens: int) -> BaseChatModel:
             max_retries=2,
         )
 
+    if provider == "google":
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+        except ImportError as exc:  # pragma: no cover - dependency guidance
+            raise ImportError(
+                "Gemini models need the Google integration. Install it with:\n"
+                "    pip install langchain-google-genai\n"
+                "and set GOOGLE_API_KEY (free key: https://aistudio.google.com/apikey)"
+            ) from exc
+
+        return ChatGoogleGenerativeAI(
+            model=model_id,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+            timeout=30,
+            max_retries=2,
+        )
+
     from langchain_openai import ChatOpenAI
 
+    # base_url lets one client cover every OpenAI-compatible host.
+    base_url = os.environ.get("OPENAI_BASE_URL") or None
     return ChatOpenAI(
         model=model_id,
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=30,
         max_retries=2,
+        base_url=base_url,
+        # Local runtimes (Ollama, LM Studio) ignore the key but the client
+        # still requires one to be present.
+        api_key=os.environ.get("OPENAI_API_KEY") or ("not-needed" if base_url else None),
     )
 
 

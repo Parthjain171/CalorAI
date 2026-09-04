@@ -61,8 +61,32 @@ source .venv/bin/activate         # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env              # Windows: copy .env.example .env
-# put your key in .env:  ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+Then put a key in `.env`. **The default configuration uses Google Gemini, which
+has a genuinely free tier** — grab a key at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey):
+
+```ini
+GOOGLE_API_KEY=your-free-key
+TEXT_MODEL=gemini-2.0-flash-lite
+VISION_MODEL=gemini-2.0-flash
+```
+
+The provider is inferred from the model id, so any of these work by editing
+`.env` alone — no code change. `.env.example` has a ready block for each:
+
+| Provider | Free? | Env |
+|---|---|---|
+| Google Gemini | **Yes, free tier** | `GOOGLE_API_KEY` |
+| Anthropic | Paid | `ANTHROPIC_API_KEY` |
+| OpenAI | Paid | `OPENAI_API_KEY` |
+| Groq / GitHub Models / OpenRouter / Ollama | Free tiers / local | `OPENAI_API_KEY` + `OPENAI_BASE_URL` |
+
+The last row is a generic OpenAI-compatible client: set `OPENAI_BASE_URL` to the
+host (e.g. `https://api.groq.com/openai/v1`, or `http://localhost:11434/v1` for
+a fully local Ollama) and use that host's model names. Whatever you pick, the
+text and vision paths stay two **different** models.
 
 Run it:
 
@@ -101,19 +125,41 @@ $env:CALORAI_MOCK=1; python eval\eval_runner.py  # Windows PowerShell
 Env-var syntax elsewhere in this README is bash; on PowerShell use
 `$env:NAME='value'` on its own line first.
 
-Only `ANTHROPIC_API_KEY` is needed for the defaults. Set `OPENAI_API_KEY` only if
-you point `TEXT_MODEL`/`VISION_MODEL` at a `gpt-*` model; the provider is
-inferred from the model id, so swapping is an env change, not a code change.
+Only one key is needed — whichever provider block you filled in above.
 
 ---
 
 ## Model Choices
 
+The split matters more than the specific vendor: **a small fast model for
+conversation and tool calling, a stronger one for recognising food in photos.**
+That holds across every supported provider.
+
+**Default (free tier) — Google Gemini:**
+
+| Path | Model | Why |
+|---|---|---|
+| Conversation + tool calling | `gemini-2.0-flash-lite` | Fastest/cheapest tier, solid function calling. Runs on ~90% of turns. |
+| Vision (food recognition) | `gemini-2.0-flash` | Stronger multimodal reasoning for identifying dishes and judging portions. |
+| Nutrition estimation | `gemini-2.0-flash-lite` | On the critical path, emits ~200 tokens of JSON. Rarely called (see caching). |
+
+Gemini is the default because it is the only major provider with a genuinely
+free API tier that offers **both** reliable tool calling and native vision —
+the two things this agent cannot work without. Check
+[AI Studio](https://aistudio.google.com/) for the exact model names your key has;
+they are env vars, so adjusting is a one-line change.
+
+**Paid equivalent — Anthropic** (the original configuration):
+
 | Path | Model | Price /MTok | Why |
 |---|---|---|---|
-| Conversation + tool calling | `claude-haiku-4-5` | $1 in / $5 out | Fastest and cheapest tool-caller in the family. Runs on ~90% of turns. |
-| Vision (food recognition) | `claude-sonnet-5` | $2 in / $10 out | Materially better at identifying food and judging portions from a plate. |
-| Nutrition estimation | `claude-haiku-4-5` | $1 in / $5 out | Sits on the critical path, emits ~200 tokens of JSON. Rarely called (see caching). |
+| Conversation + tool calling | `claude-haiku-4-5` | $1 in / $5 out | Fastest and cheapest tool-caller in the family. |
+| Vision (food recognition) | `claude-sonnet-5` | $2 in / $10 out | Materially better at identifying food and judging portions. |
+
+The brief suggested Claude 3.5 Sonnet / GPT-4o-mini for text and GPT-4o /
+Claude 3.5 Sonnet for vision. Those all still work — `TEXT_MODEL=gpt-4o-mini
+VISION_MODEL=gpt-4o` with an `OPENAI_API_KEY` — but the newer models in the same
+tiers are cheaper, faster, and better at tool calling.
 
 **Why two models rather than one.** The two jobs have opposite cost profiles.
 Conversation and tool orchestration are *easy* — decide which tool, fill in
@@ -124,15 +170,6 @@ price difference is bounded by how rarely it runs. Routing everything through on
 model means either paying vision-grade prices on every "how am I doing?" or
 accepting weak food recognition. Splitting also isolates failures: a vision
 timeout degrades to "what was in the photo?" instead of taking down logging.
-
-**Why not the models named in the brief.** The brief suggested Claude 3.5 Sonnet
-or GPT-4o-mini for text and GPT-4o or Claude 3.5 Sonnet for vision. Both paths
-here use newer models in the same tiers — cheaper, faster, and better at tool
-calling than the 3.5 generation. The originals remain one env var away:
-
-```bash
-TEXT_MODEL=gpt-4o-mini      VISION_MODEL=gpt-4o        # needs OPENAI_API_KEY
-```
 
 **The handoff, concretely.** A photo does not reach the conversation model as an
 image. The vision node calls the vision model, which returns JSON only — foods,
