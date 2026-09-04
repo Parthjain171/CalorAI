@@ -22,7 +22,7 @@ from src.db.schema import get_connection, reset_database
 from src.utils.config import settings
 from src.utils.latency import format_report, load_spans
 
-BANNER = """CalorAI — text me what you ate.
+BANNER = """CalorAI - text me what you ate.
   "had 2 parathas and chai"     "how am I doing today?"
   /img <path> [caption]         send a photo
   /help                         all commands
@@ -102,8 +102,8 @@ def _send(
     except Exception as exc:  # noqa: BLE001 - a CLI should not traceback at users
         # In streaming mode the "calorai: " prefix is already on the line, so
         # finish that line instead of printing a second prefix.
-        print(f"something went wrong — {exc}" if prefix_written
-              else f"calorai: something went wrong — {exc}")
+        print(f"something went wrong - {exc}" if prefix_written
+              else f"calorai: something went wrong - {exc}")
         ok = False
     print(f"         [{time.perf_counter() - start:.2f}s]")
     return ok
@@ -166,7 +166,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(BANNER)
     print(f"user: {args.user} | text: {settings.text_model} | vision: {settings.vision_model}")
     if settings.mock:
-        print("MOCK MODE — scripted test double, not a real model.")
+        print("MOCK MODE - scripted test double, not a real model.")
     print()
 
     while True:

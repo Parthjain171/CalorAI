@@ -3,8 +3,8 @@
 Every case asserts against the **database**, not against the wording of the
 reply. A model that says "logged it!" and writes nothing must fail, and a model
 that phrases things differently must still pass. Where a reply has to be checked
-(a clarifying question, a quoted number) the assertion is on substance — did it
-ask, does the number match the row — never on phrasing.
+(a clarifying question, a quoted number) the assertion is on substance - did it
+ask, does the number match the row - never on phrasing.
 
 Numeric checks use ranges. The exact calorie figure depends on the model and the
 seed table; what must hold is the *shape* of the outcome: one row not two, a
@@ -155,7 +155,7 @@ def _check_correction(user_id: str, replies: List[str], ctx: Dict[str, Any]) -> 
     # 3 rotis ~330. Two rows would land near 220+330=550.
     if total > 480:
         problems.append(
-            f"totals look double-counted: {total:g} cal — a correction must "
+            f"totals look double-counted: {total:g} cal - a correction must "
             "replace the meal, not add a second one"
         )
     meals = _today(user_id)
@@ -210,7 +210,7 @@ def _check_photo_half(user_id: str, replies: List[str], ctx: Dict[str, Any]) -> 
         problems.append("nothing was logged for the photo")
     elif full and total > full * 0.75:
         problems.append(
-            f"expected about half of the {full:g} cal plate, got {total:g} — "
+            f"expected about half of the {full:g} cal plate, got {total:g} - "
             "the caption did not reduce the portion"
         )
     return problems

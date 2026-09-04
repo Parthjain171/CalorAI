@@ -1,7 +1,7 @@
 """Per-turn user scoping.
 
 Tools need to know *whose* meals they are touching, but ``user_id`` is not
-something the model should be able to choose — letting the LLM pass it invites
+something the model should be able to choose - letting the LLM pass it invites
 cross-user leakage and wastes tokens on an argument it can only get wrong. It is
 carried out-of-band in a :class:`contextvars.ContextVar` that the agent sets
 before each turn, so the tool schemas the model sees stay about food.

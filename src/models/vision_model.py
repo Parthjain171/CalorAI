@@ -2,7 +2,7 @@
 
 Photos do not go to the conversation model. A dedicated vision model
 (``VISION_MODEL``, default ``claude-sonnet-5``) looks at the plate and returns
-*structured food identification only* — no chat, no logging, no tool calls. Its
+*structured food identification only* - no chat, no logging, no tool calls. Its
 JSON is then handed to the text model as context.
 
 **The handoff**, concretely:
@@ -13,10 +13,10 @@ JSON is then handed to the text model as context.
 3. The agent's ``vision`` node turns that JSON into one ``[VISION] ...`` message
    appended to the conversation, right after whatever the user typed.
 4. The text model reads the caption and the vision note *together* and decides
-   what to do — which is what makes "half of this was my brother's" resolve to
+   what to do - which is what makes "half of this was my brother's" resolve to
    ONE meal at 0.5 servings instead of a photo meal plus a caption meal.
 5. Low confidence is passed through rather than hidden, so the text model can
-   ask "looks like rice and dal — is that right?" instead of guessing.
+   ask "looks like rice and dal - is that right?" instead of guessing.
 
 Splitting it this way means the expensive model is used only for the thing it is
 uniquely good at, and every downstream behaviour (portions, memory, corrections,
@@ -231,7 +231,7 @@ def format_vision_note(analysis: Dict[str, Any]) -> str:
     )
     if confidence < 0.6:
         note += (
-            " Confidence is LOW — confirm with the user before logging"
+            " Confidence is LOW - confirm with the user before logging"
             f"{': ' + analysis['question'] if analysis['question'] else '.'}"
         )
     else:

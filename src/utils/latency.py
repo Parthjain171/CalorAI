@@ -4,8 +4,8 @@ Every timed span is appended to a JSONL file (``CALORAI_LATENCY_LOG``) as well a
 kept in memory, so percentiles survive the process and the numbers in the README
 come from real runs rather than a single lucky invocation.
 
-Spans are nested on purpose — a ``turn_image`` span contains a ``vision_model``
-span and one or more ``text_model_call`` spans — which is what makes it possible
+Spans are nested on purpose - a ``turn_image`` span contains a ``vision_model``
+span and one or more ``text_model_call`` spans - which is what makes it possible
 to say *where* a slow turn went, not just that it was slow.
 
 Percentiles use nearest-rank on the sorted sample. With the sample sizes an eval

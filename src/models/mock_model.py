@@ -2,7 +2,7 @@
 
 **This is a test double, not a feature.** It exists so the eval suite can
 exercise the graph, the tools, and every database state transition without an
-API key and without paying for tokens — CI can assert that a correction updates
+API key and without paying for tokens - CI can assert that a correction updates
 in place, that totals stay consistent, and that memory survives a restart.
 
 What it does *not* validate is the part a real model is actually for: intent
@@ -132,7 +132,7 @@ class ScriptedChatModel(BaseChatModel):
         """Most recent result per tool name, parsed back into Python objects.
 
         ToolNode serialises dict returns as JSON, so ``None`` arrives as
-        ``null`` — which ast.literal_eval cannot read. JSON is tried first and
+        ``null`` - which ast.literal_eval cannot read. JSON is tried first and
         the literal parser is the fallback, so a payload containing None no
         longer silently degrades into a raw string.
         """
@@ -283,7 +283,7 @@ class ScriptedChatModel(BaseChatModel):
         """Re-price the WHOLE meal with the corrected quantity substituted in.
 
         "2 rotis and dal" corrected to "3 rotis" must become 3 rotis *plus the
-        dal* — re-pricing only the corrected food would silently drop the rest
+        dal* - re-pricing only the corrected food would silently drop the rest
         of the meal.
         """
         items = _parse_foods(meal_name) or []
@@ -305,7 +305,7 @@ class ScriptedChatModel(BaseChatModel):
 
         meals = results.get("get_meals", {}).get("meals", [])
         if not meals:
-            return AIMessage(content="I couldn't find that meal to correct — what was it?")
+            return AIMessage(content="I couldn't find that meal to correct - what was it?")
 
         if rounds == 1:
             items = self._corrected_items(meals[0]["meal_name"], target)
@@ -323,7 +323,7 @@ class ScriptedChatModel(BaseChatModel):
         updated = results.get("update_meal", {})
         totals = updated.get("daily_totals", {})
         return AIMessage(
-            content=f"Fixed — updated to {updated.get('updated', {}).get('meal_name', 'that meal')}. "
+            content=f"Fixed - updated to {updated.get('updated', {}).get('meal_name', 'that meal')}. "
             f"You're at {totals.get('calories', 0):g} cal today."
         )
 
@@ -356,7 +356,7 @@ class ScriptedChatModel(BaseChatModel):
         memories = results.get("recall_memory", {}).get("memories", [])
         usual = next((m for m in memories if "usual" in m["key"]), None)
         if usual is None:
-            return AIMessage(content="I don't know your usual yet — what do you normally have?")
+            return AIMessage(content="I don't know your usual yet - what do you normally have?")
         if rounds == 1:
             return AIMessage(content="", tool_calls=[
                 _tool_call("lookup_nutrition", {"items": _parse_foods(usual["value"])})
@@ -402,18 +402,18 @@ class ScriptedChatModel(BaseChatModel):
         match = re.search(r"FOODS:\s*(.+)", vision)
         items = match.group(1) if match else "that"
         readable = re.sub(r"[\d.]+x\s*", "", items).replace(",", " and")
-        return f"Looks like {readable.strip()} — is that right?"
+        return f"Looks like {readable.strip()} - is that right?"
 
     @staticmethod
     def _clarify(lowered: str) -> str:
         if "graz" in lowered:
             return (
                 "No worries. What did you graze on through the afternoon? "
-                "Even rough amounts help — chai, biscuits, namkeen, anything."
+                "Even rough amounts help - chai, biscuits, namkeen, anything."
             )
         if "skip" in lowered:
             return "Got it, skipping lunch. Anything else you had instead?"
-        return "Happy to log that — what did you eat exactly?"
+        return "Happy to log that - what did you eat exactly?"
 
     @staticmethod
     def _meals_reply(period: str, result: Dict[str, Any]) -> str:
@@ -423,14 +423,14 @@ class ScriptedChatModel(BaseChatModel):
             return f"You haven't logged anything for {period}."
         listed = ", ".join(f"{m['meal_name']} ({m['calories']:g} cal)" for m in meals)
         total = sum(m["calories"] for m in meals)
-        return f"{period.capitalize()} you had {listed} — {total:g} cal in total."
+        return f"{period.capitalize()} you had {listed} - {total:g} cal in total."
 
     @staticmethod
     def _totals_reply(lowered: str, totals: Dict[str, Any]) -> str:
         if "protein" in lowered:
             return f"You're at {totals.get('protein', 0):g}g protein today."
         return (
-            f"Today so far: {totals.get('calories', 0):g} cal — "
+            f"Today so far: {totals.get('calories', 0):g} cal - "
             f"{totals.get('protein', 0):g}g protein, {totals.get('carbs', 0):g}g carbs, "
             f"{totals.get('fat', 0):g}g fat across {totals.get('meal_count', 0)} meals."
         )
@@ -439,11 +439,11 @@ class ScriptedChatModel(BaseChatModel):
     def _logged_reply(logged: Dict[str, Any]) -> str:
         if not isinstance(logged, dict) or logged.get("error"):
             reason = logged.get("error") if isinstance(logged, dict) else str(logged)
-            return f"I didn't log that — {reason}"
+            return f"I didn't log that - {reason}"
         meal = logged.get("logged", {})
         totals = logged.get("daily_totals", {})
         return (
-            f"Logged {meal.get('meal_name', 'that')} — {meal.get('calories', 0):g} cal, "
+            f"Logged {meal.get('meal_name', 'that')} - {meal.get('calories', 0):g} cal, "
             f"{meal.get('protein', 0):g}g protein. "
             f"That puts you at {totals.get('calories', 0):g} cal today."
         )

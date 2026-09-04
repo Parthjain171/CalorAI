@@ -1,7 +1,7 @@
 """Memory: what gets kept, when it is written, and how it is retrieved.
 
 Not conversation history. This is a small set of durable facts about a person
-that should still be true next month — and it is deliberately small, because
+that should still be true next month - and it is deliberately small, because
 memory that grows without bound stops being memory and becomes context bloat.
 
 **Categories** (a memory's category decides how it is retrieved):
@@ -18,18 +18,18 @@ category         examples                                   retrieval
 
 The first three tiers are *always* injected because they are few (a handful per
 user), they change the answer even when the message does not mention them, and
-getting them wrong is the visible failure — suggesting chicken to a vegetarian
+getting them wrong is the visible failure - suggesting chicken to a vegetarian
 is worse than any amount of latency. The keyword-matched tiers are where volume
 accumulates, so those must earn their place in the prompt.
 
 **Bloat control**, in three layers:
 
-1. Write-side selectivity — only the five categories above are storable, and
+1. Write-side selectivity - only the five categories above are storable, and
    the ``store_memory`` tool description tells the model what *not* to keep.
    Individual meals are never memories; they are rows in ``meals``.
-2. Keyed upsert — ``UNIQUE(user_id, key)`` means restating a preference
+2. Keyed upsert - ``UNIQUE(user_id, key)`` means restating a preference
    overwrites it. Saying "I'm vegetarian" ten times yields one row.
-3. A hard cap — at most ``CALORAI_MAX_MEMORIES`` (default 8) reach the prompt on
+3. A hard cap - at most ``CALORAI_MAX_MEMORIES`` (default 8) reach the prompt on
    any turn, ranked by tier, then keyword score, then how recently used.
 """
 

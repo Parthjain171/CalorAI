@@ -5,11 +5,11 @@
 ``prepare`` builds the per-turn system prompt. ``agent`` is the conversation
 model with tools bound. ``tools`` executes whatever it asked for and loops back.
 LangGraph (rather than an AgentExecutor) because the graph makes the control
-flow explicit — which matters once a vision pre-pass and a memory pre-pass sit in
+flow explicit - which matters once a vision pre-pass and a memory pre-pass sit in
 front of the model.
 
 Conversation history within a session is held by a LangGraph checkpointer keyed
-on ``user_id``. Everything that must outlive the process — meals, memories —
+on ``user_id``. Everything that must outlive the process - meals, memories - 
 lives in SQLite, not in the message log.
 """
 
@@ -116,7 +116,7 @@ def _vision(state: AgentState) -> Dict[str, Any]:
     """Run the vision model when a photo is attached, and only then.
 
     Its structured output is appended as one ``[VISION] ...`` message so the
-    text model reads the photo and the caption in the same turn — which is what
+    text model reads the photo and the caption in the same turn - which is what
     collapses "photo + 'half of this was my brother's'" into a single meal.
     """
     image_path = state.get("image_path")
@@ -130,7 +130,7 @@ def _vision(state: AgentState) -> Dict[str, Any]:
 
     # Merge the note INTO the user's own message rather than appending a new
     # one. A separate message would become the "latest user message", hiding the
-    # caption from anything that reads it — and the caption is exactly what
+    # caption from anything that reads it - and the caption is exactly what
     # turns "1x biryani" into half a portion. Reusing the message id makes
     # add_messages replace in place instead of appending.
     original = next(
@@ -146,7 +146,7 @@ def _prepare(state: AgentState) -> Dict[str, Any]:
     """Rebuild the system prompt for this turn, with relevant memories injected.
 
     Memory is selected per turn against the incoming message rather than dumped
-    wholesale — see :mod:`src.memory.manager` for the tiering and the cap.
+    wholesale - see :mod:`src.memory.manager` for the tiering and the cap.
     """
     memories = recall(state["user_id"], _latest_user_text(state["messages"]))
     prompt = _system_prompt()
@@ -319,7 +319,7 @@ class CalorAIAgent:
 
         Tool-calling rounds produce no visible text, so only the final answer
         surfaces. Streaming does not make a turn faster, but it cuts the time
-        until the user sees *something* — which is the latency they feel.
+        until the user sees *something* - which is the latency they feel.
         """
         label = "turn_image" if image_path else "turn_text"
         first_token_at: Optional[float] = None

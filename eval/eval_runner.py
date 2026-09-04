@@ -5,7 +5,7 @@
     python eval/eval_runner.py --repeat 3      # more latency samples
 
 Each case runs against a fresh user id, so cases cannot contaminate one another
-while still sharing one database file — which is also a standing check that
+while still sharing one database file - which is also a standing check that
 per-user isolation actually holds.
 
 Exit code is 0 only if every case passes, so this is usable as a CI gate.
@@ -100,13 +100,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         reset_database()
 
     mode = "MOCK (scripted double)" if settings.mock else f"REAL ({settings.text_model})"
-    print(f"CalorAI eval — {len(selected)} case(s) x{args.repeat} — mode: {mode}")
+    print(f"CalorAI eval - {len(selected)} case(s) x{args.repeat} - mode: {mode}")
     if settings.mock:
         print(
             f"{YELLOW}Mock mode validates plumbing (tools, database, state "
             f"transitions), not answer quality.{RESET}"
         )
-        print(f"{YELLOW}Latency here is framework overhead only — set "
+        print(f"{YELLOW}Latency here is framework overhead only - set "
               f"CALORAI_MOCK=0 with an API key for real numbers.{RESET}")
     print(f"vision: {settings.vision_model}\n")
 

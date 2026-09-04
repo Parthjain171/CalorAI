@@ -4,7 +4,7 @@ Three tables and one view:
 
 * ``meals``            - one row per logged meal, corrections update in place.
 * ``memories``         - durable facts about the user, keyed and upsertable.
-* ``nutrition_cache``  - memoised nutrition lookups (survives restarts).
+* ``nutrition_cache`` - memoised nutrition lookups (survives restarts).
 * ``daily_totals``     - view that aggregates ``meals`` per user per local day.
 
 The view is the single source of truth for "how am I doing today" so totals can

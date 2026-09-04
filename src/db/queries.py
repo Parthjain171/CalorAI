@@ -228,7 +228,7 @@ def list_memories(
 
 
 def touch_memories(user_id: str, keys: List[str]) -> None:
-    """Record that these memories were surfaced — feeds recall ranking."""
+    """Record that these memories were surfaced - feeds recall ranking."""
     if not keys:
         return
     with connection() as conn:

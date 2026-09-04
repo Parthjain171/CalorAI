@@ -60,7 +60,7 @@ def _validate_macros(
         if number > ceiling:
             return (
                 f"{number:g} {name} is not a plausible single meal (limit "
-                f"{ceiling:g}). Check the portion with the user before logging — "
+                f"{ceiling:g}). Check the portion with the user before logging - "
                 "this usually means a quantity was misread."
             )
     return None

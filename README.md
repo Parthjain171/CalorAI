@@ -1,15 +1,15 @@
 # CalorAI Agent
 
 A conversational meal logger you talk to like a friend. Text what you ate, send a
-photo of your plate, correct yourself halfway through — it keeps an accurate
+photo of your plate, correct yourself halfway through - it keeps an accurate
 running total of your day. No forms, no dropdowns.
 
 ```
 you: had 2 parathas and chai for breakfast
-calorai: Logged 2 parathas and chai — 610 cal, 12.5g protein. That puts you at 610 cal today.
+calorai: Logged 2 parathas and chai - 610 cal, 12.5g protein. That puts you at 610 cal today.
 
 you: actually that was 3 parathas
-calorai: Fixed — 3 parathas and chai, 870 cal. You're at 870 cal today.
+calorai: Fixed - 3 parathas and chai, 870 cal. You're at 870 cal today.
 
 you: how much protein have I had?
 calorai: You're at 17.5g protein today.
@@ -38,9 +38,9 @@ row**. The day shows 870, not 610 + 870.
 ## Project Overview
 
 CalorAI is a WhatsApp-style calorie tracker built as a LangGraph agent over
-SQLite. A user texts what they ate in whatever shape it comes out — "leftover
+SQLite. A user texts what they ate in whatever shape it comes out - "leftover
 biryani, maybe two thirds of the box", "same as yesterday", a photo of a plate
-with "half of this was my brother's" — and the agent decides whether it has
+with "half of this was my brother's" - and the agent decides whether it has
 enough to log, asks one short question when it doesn't, and maintains running
 daily totals that stay correct through edits and deletions. Two models are used
 deliberately: a fast, cheap one for conversation and tool calling, and a stronger
@@ -64,7 +64,7 @@ cp .env.example .env              # Windows: copy .env.example .env
 ```
 
 Then put a key in `.env`. **The default configuration runs on Groq's free tier**
-(no card) — create a key at [console.groq.com/keys](https://console.groq.com/keys):
+(no card) - create a key at [console.groq.com/keys](https://console.groq.com/keys):
 
 ```ini
 OPENAI_API_KEY=gsk_...your-groq-key...
@@ -76,7 +76,7 @@ NUTRITION_MODEL=openai/gpt-oss-20b
 
 This is the configuration every real-model number in this README was measured
 on. The provider is inferred from the model id and base URL, so any of these
-work by editing `.env` alone — no code change. `.env.example` has a ready
+work by editing `.env` alone - no code change. `.env.example` has a ready
 block for each:
 
 | Provider | Free? | Env | Status |
@@ -88,7 +88,7 @@ block for each:
 
 Gemini note: the integration is complete and the key authenticates, but Google
 returned `403 PERMISSION_DENIED: Your project has been denied access` for every
-model on the account used to build this — a restriction Google applies to some
+model on the account used to build this - a restriction Google applies to some
 new accounts, unrelated to the code. If your account is not restricted, the
 Gemini block in `.env.example` should work as is.
 
@@ -132,8 +132,8 @@ in `USDA_API_KEY` adds measured nutrition data for foods outside the seed table
 (see [Tool Design](#tool-design)).
 
 **No API key?** `CALORAI_MOCK=1` swaps in a deterministic scripted stand-in for
-the conversation model, so the whole suite runs offline. It validates plumbing —
-tools, database, state transitions — **not** answer quality. See
+the conversation model, so the whole suite runs offline. It validates plumbing - 
+tools, database, state transitions - **not** answer quality. See
 [Latency Numbers](#latency-numbers) for what that does and does not tell you.
 
 ```bash
@@ -146,7 +146,7 @@ $env:CALORAI_MOCK=1; python eval\eval_runner.py  # Windows PowerShell
 Env-var syntax elsewhere in this README is bash; on PowerShell use
 `$env:NAME='value'` on its own line first.
 
-Only one key is needed — whichever provider block you filled in above.
+Only one key is needed - whichever provider block you filled in above.
 
 ---
 
@@ -156,7 +156,7 @@ The split matters more than the specific vendor: **a small fast model for
 conversation and tool calling, a stronger one for recognising food in photos.**
 That holds across every supported provider.
 
-**Default (free tier, verified) — Groq:**
+**Default (free tier, verified) - Groq:**
 
 | Path | Model | Why |
 |---|---|---|
@@ -169,18 +169,18 @@ listed live (`/models`), then every candidate was probed: three models make
 correct tool calls (`gpt-oss-20b` 0.5 s, `gpt-oss-120b` 3.3 s, `qwen3.8-27b`
 0.4 s), two accept images (both qwen), and `gpt-oss` is text-only. `gpt-oss-120b`
 alone would have consumed the 3 s turn budget on a single call. `gpt-oss-20b`
-runs with `reasoning_effort=low` — hidden reasoning tokens are wasted on "which
+runs with `reasoning_effort=low` - hidden reasoning tokens are wasted on "which
 tool, with what arguments", and they count against the free tier's per-minute
 budget.
 
 The two model families are deliberately different: gpt-oss cannot see, qwen
 can, and each does the job it is best at.
 
-**Alternative (free tier) — Google Gemini:** `gemini-3.5-flash-lite` for text,
+**Alternative (free tier) - Google Gemini:** `gemini-3.5-flash-lite` for text,
 `gemini-3.5-flash` for vision, one `GOOGLE_API_KEY`. Fully wired; see the account
 restriction note under Setup.
 
-**Paid equivalent — Anthropic** (the original configuration):
+**Paid equivalent - Anthropic** (the original configuration):
 
 | Path | Model | Price /MTok | Why |
 |---|---|---|---|
@@ -188,13 +188,13 @@ restriction note under Setup.
 | Vision (food recognition) | `claude-sonnet-5` | $2 in / $10 out | Materially better at identifying food and judging portions. |
 
 The brief suggested Claude 3.5 Sonnet / GPT-4o-mini for text and GPT-4o /
-Claude 3.5 Sonnet for vision. Those all still work — `TEXT_MODEL=gpt-4o-mini
-VISION_MODEL=gpt-4o` with an `OPENAI_API_KEY` — but the newer models in the same
+Claude 3.5 Sonnet for vision. Those all still work - `TEXT_MODEL=gpt-4o-mini
+VISION_MODEL=gpt-4o` with an `OPENAI_API_KEY` - but the newer models in the same
 tiers are cheaper, faster, and better at tool calling.
 
 **Why two models rather than one.** The two jobs have opposite cost profiles.
-Conversation and tool orchestration are *easy* — decide which tool, fill in
-arguments, write one friendly sentence — and they happen on every single message,
+Conversation and tool orchestration are *easy* - decide which tool, fill in
+arguments, write one friendly sentence - and they happen on every single message,
 so latency and cost dominate. Identifying dal versus rajma from a photo is
 *hard*, and happens on a small minority of turns, so quality dominates and the
 price difference is bounded by how rarely it runs. Routing everything through one
@@ -203,19 +203,19 @@ accepting weak food recognition. Splitting also isolates failures: a vision
 timeout degrades to "what was in the photo?" instead of taking down logging.
 
 **The handoff, concretely.** A photo does not reach the conversation model as an
-image. The vision node calls the vision model, which returns JSON only — foods,
+image. The vision node calls the vision model, which returns JSON only - foods,
 servings, confidence, and a confirming question if unsure. That is rendered as a
 `[VISION]` note and **merged into the user's own message**, so the text model
 reads the caption and the identified food together in one turn. That merge is
 what makes case 9 work: "1x biryani" plus "half of this was my brother's"
 resolves to one meal at 0.5 servings rather than a photo meal and a caption meal.
 Low confidence is passed through rather than hidden, so the agent asks "looks
-like rice and dal — is that right?" instead of guessing.
+like rice and dal - is that right?" instead of guessing.
 
-**When the vision model is confidently wrong** — it says quinoa and it was rice —
+**When the vision model is confidently wrong** - it says quinoa and it was rice - 
 nothing is hidden: the reply names what was logged and its calories, so the
 user sees the mistake immediately, and the fix is the ordinary correction path
-("that was rice, not quinoa" → `update_meal`), which never double-counts. The
+("that was rice, not quinoa" -> `update_meal`), which never double-counts. The
 user's own words also always outrank the model's: a caption is read *together*
 with the vision note, not after it.
 
@@ -224,7 +224,7 @@ with the vision note, not after it.
 ## Memory Design
 
 The most important part of the system, and the part most easily done badly.
-Memory here is **not** conversation history — it is a small set of durable facts
+Memory here is **not** conversation history - it is a small set of durable facts
 that should still be true next month.
 
 ### What gets stored
@@ -239,7 +239,7 @@ that should still be true next month.
 
 The first three tiers are always injected because there are only a handful per
 user, they change the answer *even when the message doesn't mention them*, and
-getting them wrong is the visible failure — suggesting chicken to a vegetarian is
+getting them wrong is the visible failure - suggesting chicken to a vegetarian is
 worse than any amount of latency. The other two are where volume accumulates, so
 they must earn their place in the prompt.
 
@@ -255,7 +255,7 @@ to keep.
 
 Writes are **model-driven**: the model recognises a durable fact and calls
 `store_memory` in the same turn, without ceremony. "i'm vegetarian btw" stores
-`diet = vegetarian` and logs no meal. There is no background summarisation pass —
+`diet = vegetarian` and logs no meal. There is no background summarisation pass - 
 that would be a second inference on every turn, for facts that appear a handful
 of times in a user's lifetime.
 
@@ -270,7 +270,7 @@ Retrieval runs in the graph's `prepare` node, against the incoming message,
    fact mentioned once.
 3. Keep the always-on tier plus anything scoring above zero, capped at
    `CALORAI_MAX_MEMORIES` (default 8).
-4. Mark what was surfaced (`last_used`, `use_count`) — that feeds step 2 next time.
+4. Mark what was surfaced (`last_used`, `use_count`) - that feeds step 2 next time.
 
 `recall_memory` exists as a tool on top of this for the case injection can't
 cover: "my usual" needs the *exact stored value* to act on, not a hint.
@@ -279,11 +279,11 @@ cover: "my usual" needs the *exact stored value* to act on, not a hint.
 
 Three layers rather than one, because any single layer fails eventually:
 
-1. **Write-side selectivity** — only five categories are storable, and the tool
+1. **Write-side selectivity** - only five categories are storable, and the tool
    description steers hard against keeping chatter.
-2. **Keyed upsert** — `UNIQUE(user_id, key)`. Saying "I'm vegetarian" ten times
+2. **Keyed upsert** - `UNIQUE(user_id, key)`. Saying "I'm vegetarian" ten times
    yields one row, not ten. Restating a goal overwrites it.
-3. **A hard cap** — at most 8 memories reach any prompt, ranked by tier then
+3. **A hard cap** - at most 8 memories reach any prompt, ranked by tier then
    relevance then recency. Even a user with 500 memories has a bounded prompt.
 
 ### Persistence
@@ -319,7 +319,7 @@ Design decisions worth defending:
 
 - **`log_meal` vs `update_meal` is the sharpest boundary in the system.** Using
   `log_meal` to fix an existing meal double-counts the day, and it fails
-  *silently* — no error, just wrong numbers. Both tool descriptions call this out
+  *silently* - no error, just wrong numbers. Both tool descriptions call this out
   explicitly, and the eval asserts it.
 - **`lookup_nutrition` takes a list, not one food.** "2 parathas and chai" needs
   two lookups; batching them into one call saves a full model round-trip per
@@ -339,20 +339,20 @@ Design decisions worth defending:
 
 Cheapest first, because most food is boring and repeated:
 
-1. **Seed table** — ~70 foods Indian users actually text about, in-process. ~0 ms,
+1. **Seed table** - ~70 foods Indian users actually text about, in-process. ~0 ms,
    zero tokens. Handles most eval traffic.
-2. **SQLite cache** — anything a lower tier has resolved before, on any past run.
+2. **SQLite cache** - anything a lower tier has resolved before, on any past run.
    Survives restarts.
-3. **USDA FoodData Central** — measured data for foods the seed table lacks.
+3. **USDA FoodData Central** - measured data for foods the seed table lacks.
    One HTTP call per unknown food, fanned out concurrently, then cached, so each
    distinct food costs one request ever. Generic datasets only (FNDDS,
-   Foundation, SR Legacy — never branded products), and a hit must contain every
+   Foundation, SR Legacy - never branded products), and a hit must contain every
    token of the query, so "chai" can never resolve to "Chard, cooked". Optional:
    off unless `USDA_API_KEY` is set. `DEMO_KEY` works but is capped at
    **10 requests/hour** (measured from the `X-Ratelimit-Limit` header, not the
    30 the docs suggest), so a circuit breaker stands the tier down for 15 min
    after a 429 rather than paying a dead round-trip on every miss.
-4. **LLM estimator** — one batched call for whatever no database lists, then
+4. **LLM estimator** - one batched call for whatever no database lists, then
    cached.
 
 If the estimator is unreachable too, a coarse keyword heuristic produces a
@@ -366,7 +366,7 @@ beats an error message.
 Two things are measured and reported separately: what the models cost, and
 what the harness around them costs. All real-model numbers are from the
 verified Groq configuration (`gpt-oss-20b` text, `qwen3.8-27b` vision) on its
-**free tier**, which matters for reading the tails — see below.
+**free tier**, which matters for reading the tails - see below.
 
 ### Measured: real models
 
@@ -377,17 +377,17 @@ From `python eval/eval_runner.py --pace 50` over the nine text cases (10 turns,
 |---|---|---|---|---|---|
 | `text_model_call` | 30 | **0.66 s** | 13.8 s | 1.90 s | 19.6 s |
 | `turn_text` (end to end) | 10 | **1.77 s** | 26.5 s | 6.19 s | 26.5 s |
-| `vision_model` | 2 | 2.0 s (warm) | — | — | 11.8 s (first call) |
-| `turn_image` (end to end) | 2 | **4.4 s** (warm) | — | — | 14.7 s (first call) |
+| `vision_model` | 2 | 2.0 s (warm) | - | - | 11.8 s (first call) |
+| `turn_image` (end to end) | 2 | **4.4 s** (warm) | - | - | 14.7 s (first call) |
 
 **Text turns land at 1.8 s p50 against a 3 s target; image turns at 4.4 s
-against 6 s.** A model call unthrottled is 0.4–0.8 s, and a turn is two or
-three of them: decide → tool(s) → reply.
+against 6 s.** A model call unthrottled is 0.4 - 0.8 s, and a turn is two or
+three of them: decide -> tool(s) -> reply.
 
 **The p95 is the free tier, not the model.** Groq meters `gpt-oss-20b` at
 8,000 tokens per minute (`x-ratelimit-limit-tokens: 8000`, read from the
 response headers). A turn arriving inside the same minute as the previous one
-is refused with a 429 and the SDK's backoff wait — 15–24 s per call — is what
+is refused with a 429 and the SDK's backoff wait - 15 - 24 s per call - is what
 gets recorded. The `--pace` flag exists to separate the two: paced runs measure
 inference, unpaced runs measure the tier. Three of the ten turns above were
 still throttled even at 50 s pacing. There is no free Groq model with a bigger
@@ -400,7 +400,7 @@ provider side: both requests carried the same 78 KB downscaled JPEG.
 
 ### Measured: framework overhead
 
-Everything except the model calls — graph traversal, memory retrieval, tool
+Everything except the model calls - graph traversal, memory retrieval, tool
 execution, SQLite reads and writes, response assembly. From 10 full eval passes
 (`CALORAI_MOCK=1`), n=100 text turns / n=30 image turns:
 
@@ -431,38 +431,38 @@ The instrumentation records nested spans (`turn_text` / `turn_image` contain
 The first real-model run was the most useful latency measurement of the
 project, because it was bad: turns of 15 s, 98 s, 21 s, 24 s, 89 s. Attribution
 showed every call carrying ~2,800 tokens of static prompt (800 of system
-prompt, 2,000 of tool schemas) **plus the entire replayed thread** — every past
-tool call and JSON result — so calls got slower turn by turn and the token
+prompt, 2,000 of tool schemas) **plus the entire replayed thread** - every past
+tool call and JSON result - so calls got slower turn by turn and the token
 budget was gone by turn three. Fixed in order of impact:
 
 - **Bounded history.** The model now sees the last `CALORAI_MAX_HISTORY_TOKENS`
   (2,000) of the thread, trimmed from the end and never splitting a tool call
   from its result. The full thread stays in the checkpointer; facts are in
   SQLite, so the model only needs recency.
-- **Leaner static prompt.** System prompt 802 → 426 tokens, tool schemas
-  1,997 → 1,541, with every boundary rule kept. Per-call static cost ~2,800 →
+- **Leaner static prompt.** System prompt 802 -> 426 tokens, tool schemas
+  1,997 -> 1,541, with every boundary rule kept. Per-call static cost ~2,800 ->
   ~1,970 tokens.
 - **Low reasoning effort** on reasoning models (`reasoning_effort=low`). Hidden
   thinking tokens were being spent on "which tool, with what arguments".
 - **Image downscaling.** Photos are resized to 1,024 px and re-encoded as JPEG
-  before upload: 596 KB → 78 KB on the test photo.
+  before upload: 596 KB -> 78 KB on the test photo.
 - **Batched nutrition lookups.** One tool call for every food in a message
-  instead of one per food — a whole model round-trip saved per extra food.
+  instead of one per food - a whole model round-trip saved per extra food.
 - **Nutrition cache.** Seed table answers most lookups with zero tokens; USDA
   and LLM results are persisted, so a food is priced at most once ever.
 - **Totals folded into `log_meal`.** Removes a `get_daily_totals` round-trip from
   the most common interaction.
-- **"Same as yesterday" re-logs stored macros** instead of re-pricing — two
+- **"Same as yesterday" re-logs stored macros** instead of re-pricing - two
   fewer calls, and no re-pricing drift.
 - **Cached model clients** (`lru_cache`), so no turn rebuilds a connection pool.
-- **Streaming** (`stream_chat`), with `time_to_first_token` recorded separately —
+- **Streaming** (`stream_chat`), with `time_to_first_token` recorded separately - 
   streaming doesn't make a turn faster, but time-to-first-token is the latency a
   user actually feels.
 - **Parallel tool calls** work (LangGraph's `ToolNode` runs them on a thread
   pool). This is what surfaced the SQLite concurrency bug described below.
 
-After these, unthrottled calls measured 0.57–0.72 s and a fresh-budget turn
-5.6 s from a cold process — of which ~3.7 s is Python startup, not the agent.
+After these, unthrottled calls measured 0.57 - 0.72 s and a fresh-budget turn
+5.6 s from a cold process - of which ~3.7 s is Python startup, not the agent.
 
 ### What is still slow, and why
 
@@ -473,9 +473,9 @@ After these, unthrottled calls measured 0.57–0.72 s and a fresh-budget turn
   starting the text model before vision returns would waste tokens, since every
   downstream decision depends on what the food is. Add a first-call warm-up on
   the provider side.
-- **Corrections take 4 model round-trips** (find → re-price → update → reply).
+- **Corrections take 4 model round-trips** (find -> re-price -> update -> reply).
   Collapsing find-and-update into one tool would be faster but would blur the
-  `log`/`update` boundary that keeps double-counting impossible — a trade I chose
+  `log`/`update` boundary that keeps double-counting impossible - a trade I chose
   not to make.
 - **A cache miss adds a model call** inside the turn (0.77 s measured for
   "chicken quinoa bowl"). Capped at one per turn by batching, never repeated
@@ -494,7 +494,7 @@ flowchart TD
     subgraph graph["LangGraph StateGraph"]
         V{"vision node<br/>image attached?"}
         V -- no --> P["prepare node"]
-        V -- yes --> VM["VISION MODEL<br/>claude-sonnet-5<br/>→ foods, servings, confidence"]
+        V -- yes --> VM["VISION MODEL<br/>claude-sonnet-5<br/>-> foods, servings, confidence"]
         VM --> MERGE["merge [VISION] note<br/>INTO the user's message"]
         MERGE --> P
 
@@ -507,7 +507,7 @@ flowchart TD
         A -- "no tool_calls" --> R["reply"]
     end
 
-    T <--> DB[("SQLite<br/>meals · memories · nutrition_cache<br/>daily_totals VIEW")]
+    T <--> DB[("SQLite<br/>meals , memories , nutrition_cache<br/>daily_totals VIEW")]
     R --> OUT["streamed to CLI"]
 
     style VM fill:#e8d5f2,stroke:#7b3fa0
@@ -516,7 +516,7 @@ flowchart TD
 ```
 
 **The flow in words.** A turn enters at the `vision` node, which no-ops unless an
-image is attached — so text turns pay nothing for the image path. If there is a
+image is attached - so text turns pay nothing for the image path. If there is a
 photo, the vision model identifies the food and its output is merged into the
 user's own message. `prepare` then retrieves relevant memories and builds the
 system prompt for this turn. The `agent` node runs the text model with all eight
@@ -524,13 +524,13 @@ tools bound; if it emits tool calls they execute in `ToolNode` and loop back,
 otherwise the reply is returned and streamed.
 
 **Two state decisions worth noting.** The system prompt is held in state as a
-plain string rather than as a message, because `add_messages` *appends* — a
+plain string rather than as a message, because `add_messages` *appends* - a
 freshly built `SystemMessage` each turn would quietly stack up inside the
 checkpointer and grow context forever. And conversation threads live in a
 LangGraph **SQLite checkpointer** keyed on `user_id` (`data/checkpoints.db`), so
 a clarifying question asked just before a restart is still pending afterwards
 and the user's answer lands against it. Meals and memories live in the
-application database, never in the message log — the thread is context, the
+application database, never in the message log - the thread is context, the
 tables are truth.
 
 **Why totals can't drift.** `daily_totals` is a SQL **view** aggregating meal
@@ -542,17 +542,17 @@ that currently exist.
 
 ## Test Cases
 
-All 11 required conversations pass — against the scripted double in CI, and
+All 11 required conversations pass - against the scripted double in CI, and
 **against live models** (`gpt-oss-20b` + `qwen3.8-27b` on Groq) with a real
 plate photo. The eval asserts against the **database**, not the wording of the
-reply — a model that says "logged it!" and writes nothing fails, and a model
+reply - a model that says "logged it!" and writes nothing fails, and a model
 that phrases things differently still passes.
 
 The live run was not green first time, and that is the point of having it. Of
 the eleven, ten passed on the first real attempt; "same as yesterday" failed
-twice for two different, real reasons — a compound food string priced as one of
+twice for two different, real reasons - a compound food string priced as one of
 its parts, then a date copied from `get_meals` that wrote the replay onto
-yesterday — and passed once both were fixed. Details under
+yesterday - and passed once both were fixed. Details under
 [Two real bugs the eval caught](#two-real-bugs-the-eval-caught) and in the
 commit history.
 
@@ -565,7 +565,7 @@ Three layers of testing, each catching a different class of mistake:
 | Sabotage check | `python eval/test_eval_detects_regressions.py` | That the eval itself can fail |
 
 `python demo.py` runs the eleven top to bottom with seeded history, printing the
-rows after every turn — three cases ("same as yesterday", the correction, "my
+rows after every turn - three cases ("same as yesterday", the correction, "my
 usual") need history to act on and look like no-ops when run cold.
 
 | # | Conversation | What is asserted |
@@ -573,7 +573,7 @@ usual") need history to act on and look like no-ops when run cold.
 | 1 | "had 2 parathas and chai for breakfast" | 1 row, `meal_type=breakfast`, macros > 0 |
 | 2 | "leftover biryani, maybe two thirds of the box" | 1 row, calories in a two-thirds range |
 | 3 | "skipped lunch but grazed all afternoon" | **0 rows** + reply contains a question |
-| 4 | "same as yesterday" | today's calories ≈ yesterday's |
+| 4 | "same as yesterday" | today's calories ~ yesterday's |
 | 5 | "actually that was 3 rotis not 2" | **exactly 1 row**, total below the double-counted figure, row says 3 |
 | 6 | "how much protein have I had today?" | reply quotes the DB protein total |
 | 7 | "how am I doing on calories?" | reply quotes the DB calorie total |
@@ -587,28 +587,28 @@ Case 9's check is measured, not hardcoded: the runner first logs the same photo
 in materially lower. So "half" is compared against an actual full plate.
 
 **The eval can fail.** `eval/test_eval_detects_regressions.py` deliberately
-breaks the two differentiator behaviours — makes corrections insert instead of
-update, and makes the photo path ignore its caption — and asserts the matching
+breaks the two differentiator behaviours - makes corrections insert instead of
+update, and makes the photo path ignore its caption - and asserts the matching
 case turns red. Both sabotages are detected. An eval that only ever passes is
 not evidence of anything.
 
 ### Two real bugs the eval caught
 
 Worth recording, because both were silent-wrong-answer bugs rather than crashes.
-(The live-model runs later found four more of the same kind — an invented
+(The live-model runs later found four more of the same kind - an invented
 `ask_question` tool, an empty reply mid-task, "2 idli and sambar" priced as a
 lone bowl of sambar, and a replayed meal written onto yesterday's date. Each is
 a commit with its own test.)
 
-1. **Parallel tool calls lost data.** Running the suite 6× surfaced a ~1-in-20
-   failure in case 4 — the only case issuing multiple `log_meal` calls in one
+1. **Parallel tool calls lost data.** Running the suite 6x surfaced a ~1-in-20
+   failure in case 4 - the only case issuing multiple `log_meal` calls in one
    turn. `ToolNode` executes parallel calls on a thread pool, and a single
    `sqlite3` connection isn't safe for concurrent use; `insert_meal`'s INSERT and
    its read-back were interleaving. In production this would have dropped a meal
    from a multi-meal turn and the user would only notice their totals were low.
    Fixed with a re-entrant lock around all database access.
 2. **The photo caption was being ignored.** Appending the `[VISION]` note as its
-   own message made it the "latest user message", hiding the caption — so "half
+   own message made it the "latest user message", hiding the caption - so "half
    of this was my brother's" logged a full plate. Fixed by merging the note into
    the user's message instead.
 
@@ -619,11 +619,11 @@ a commit with its own test.)
 **Assumptions**
 
 - One user per CLI session, identified by `--user`. Rows are scoped by `user_id`
-  throughout, so multi-user isolation holds, but there is no auth — the user id
+  throughout, so multi-user isolation holds, but there is no auth - the user id
   is asserted, not proven.
 - Calorie tracking is trend-following, not laboratory measurement. Seed values
   are approximations of a typical serving, and "two thirds of the box" is
-  genuinely ±20%. Precision beyond that is false comfort.
+  genuinely +/-20%. Precision beyond that is false comfort.
 - A "day" is the user's local calendar day. Timezone is a config value
   (`CALORAI_TZ_OFFSET_HOURS`, default IST), not detected.
 - The food vocabulary is India-first, since that is the described user base.
@@ -632,13 +632,13 @@ a commit with its own test.)
 
 | Chose | Gave up |
 |---|---|
-| Seed table + cache before any LLM call | Coverage — an unusual food costs one extra model call the first time |
+| Seed table + cache before any LLM call | Coverage - an unusual food costs one extra model call the first time |
 | `daily_totals` as a view | A few ms per read, for totals that can never drift |
 | Separate `log_meal` / `update_meal` | One round-trip on corrections, to make double-counting structurally impossible |
 | Memory injected by keyword relevance | Semantic recall; an embedding index is the obvious upgrade |
-| Model-driven memory writes | Recall — a durable fact stated obliquely may not get stored |
+| Model-driven memory writes | Recall - a durable fact stated obliquely may not get stored |
 | Serialising all DB access with a lock | Theoretical write concurrency SQLite wouldn't have delivered anyway |
-| Vision → text as two serial calls | ~1–2 s on image turns, for much better recognition and isolated failures |
+| Vision -> text as two serial calls | ~1 - 2 s on image turns, for much better recognition and isolated failures |
 | `contextvars` for `user_id` | Explicitness, in exchange for tool schemas the model can't misuse |
 | A scripted test double for offline evals | It proves plumbing only, and is clearly labelled as such |
 
@@ -676,9 +676,9 @@ Approximate effort across the build, in the order it was done:
 | Free-provider support (Gemini + OpenAI-compatible hosts) | 0.4 h |
 | SQLite checkpointer, USDA tier, demo, unit tests, CI | 1.2 h |
 | Real-model verification: provider probing, latency attribution, 4 bugs fixed | 1.5 h |
-| **Total** | **≈ 12.2 h** |
+| **Total** | **~ 12.2 h** |
 
-The single largest unplanned cost was the concurrency bug — it only appeared
+The single largest unplanned cost was the concurrency bug - it only appeared
 under repeated runs, which is precisely the argument for running an eval more
 than once.
 
@@ -728,21 +728,21 @@ nutrition table.
 
 Where it helped most:
 
-- **Volume with structure** — the ~70-entry seed table and the tool docstrings
+- **Volume with structure** - the ~70-entry seed table and the tool docstrings
   are the kind of high-quantity, moderate-judgement work that is fastest to
   generate and then edit.
 - **Debugging from evidence.** The concurrency bug was found by reading an actual
   stack trace out of a flaky run rather than by guessing, then fixed at the layer
   that owned the problem.
 
-Where it needed correcting — worth being specific, since this is the honest part:
+Where it needed correcting - worth being specific, since this is the honest part:
 
 - It initially attributed the truncated latency-log lines to a write-retry it had
   just added, removed the retry, and the corruption persisted. The real cause was
   concurrent unlocked appends from LangGraph's worker threads. The lesson held
   for the SQLite bug an hour later.
 - The first vision integration appended the `[VISION]` note as a separate
-  message, which silently broke the caption path — caught only because case 9
+  message, which silently broke the caption path - caught only because case 9
   asserts against a measured full-plate baseline rather than a fixed number.
 - Everything above was validated against a scripted double first. The first
   run against a real model then found four things the double could not:

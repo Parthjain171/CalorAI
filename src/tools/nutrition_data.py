@@ -1,7 +1,7 @@
 """Seed nutrition table: the fast path for foods Indian users actually text about.
 
 Values are per one natural serving (one roti, one cup of chai, one plate of
-biryani) and are approximate — good enough for calorie tracking, which is a
+biryani) and are approximate - good enough for calorie tracking, which is a
 trend-following exercise, not a lab measurement.
 
 This table exists for latency, not completeness. A hit here costs ~0ms and zero
@@ -133,7 +133,7 @@ ALIASES: Dict[str, str] = {
 }
 
 # Coarse per-serving estimates used only when the LLM estimator is unavailable
-# (no API key, network failure). Deliberately blunt — better than refusing to log.
+# (no API key, network failure). Deliberately blunt - better than refusing to log.
 FALLBACK_BY_KEYWORD: Dict[str, Tuple[float, float, float, float]] = {
     "chicken": (250, 24.0, 6.0, 14.0),
     "mutton": (290, 24.0, 4.0, 20.0),

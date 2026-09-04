@@ -2,7 +2,7 @@
 
 An eval that passes is only meaningful if it can fail. This deliberately breaks
 the two differentiator behaviours and asserts that the corresponding case turns
-red — guarding against assertions that are silently vacuous.
+red - guarding against assertions that are silently vacuous.
 
     python eval/test_eval_detects_regressions.py
 
@@ -80,7 +80,7 @@ def main() -> int:
 
         if exit_code == 0:
             missed.append(f"{case_id}: {description}")
-            print(f"### MISSED — case {case_id} still passed, the assertion is too weak")
+            print(f"### MISSED - case {case_id} still passed, the assertion is too weak")
         else:
             print(f"### detected")
 
@@ -88,9 +88,9 @@ def main() -> int:
     if missed:
         print(f"{len(missed)} sabotage(s) NOT detected:")
         for item in missed:
-            print(f"  - {item}")
+            print(f" - {item}")
         return 1
-    print(f"all {len(SABOTAGES)} sabotages detected — the eval can fail")
+    print(f"all {len(SABOTAGES)} sabotages detected - the eval can fail")
     return 0
 
 

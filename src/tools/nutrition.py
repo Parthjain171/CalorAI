@@ -1,12 +1,12 @@
-"""``lookup_nutrition`` — the only tool that knows what food is worth.
+"""``lookup_nutrition`` - the only tool that knows what food is worth.
 
 Four tiers, cheapest first:
 
-1. **Seed table** (``nutrition_data.SEED_NUTRITION``) — in-process dict, ~0 ms.
-2. **SQLite cache** — anything a lower tier has resolved before, on any past run.
-3. **USDA FoodData Central** (``nutrition_api``) — measured data, one HTTP call
+1. **Seed table** (``nutrition_data.SEED_NUTRITION``) - in-process dict, ~0 ms.
+2. **SQLite cache** - anything a lower tier has resolved before, on any past run.
+3. **USDA FoodData Central** (``nutrition_api``) - measured data, one HTTP call
    per unknown food, fanned out concurrently, then cached.
-4. **LLM estimator** — one small batched call for whatever no database lists.
+4. **LLM estimator** - one small batched call for whatever no database lists.
 
 The tool takes a *list* of foods rather than one. A message like "2 parathas and
 chai" needs two lookups; batching them into a single tool call saves a whole
@@ -81,7 +81,7 @@ def _estimate_with_llm(foods: List[str]) -> Dict[str, Dict[str, float]]:
     """Ask a small model for per-serving macros for foods we have never seen.
 
     One request for all misses. Returns ``{}`` on any failure so the caller can
-    fall back to the heuristic — a wrong-ish number that gets logged beats an
+    fall back to the heuristic - a wrong-ish number that gets logged beats an
     error message in a texting UX.
     """
     if not foods:

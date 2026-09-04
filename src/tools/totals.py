@@ -1,4 +1,4 @@
-"""``get_daily_totals`` — the authoritative answer to "how am I doing today?".
+"""``get_daily_totals`` - the authoritative answer to "how am I doing today?".
 
 Totals are read from the ``daily_totals`` SQL view, which aggregates the meal
 rows on every read. There is no counter to keep in sync, so an edit or a delete

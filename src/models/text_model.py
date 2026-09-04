@@ -8,14 +8,14 @@ Three providers are supported, chosen so the project can run on a genuinely free
 key as well as a paid one:
 
 * ``claude-*``  -> Anthropic          (``ANTHROPIC_API_KEY``)
-* ``gemini-*``  -> Google AI Studio   (``GOOGLE_API_KEY``) — has a free tier
+* ``gemini-*``  -> Google AI Studio   (``GOOGLE_API_KEY``) - has a free tier
 * everything else -> an OpenAI-compatible endpoint (``OPENAI_API_KEY``, plus
-  ``OPENAI_BASE_URL`` to point at Groq, GitHub Models, OpenRouter, Ollama, …)
+  ``OPENAI_BASE_URL`` to point at Groq, GitHub Models, OpenRouter, Ollama, ...)
 
 The OpenAI-compatible branch is the escape hatch: any provider that speaks that
 wire format works by setting a base URL, with no code change here.
 
-Clients are cached because constructing one sets up an HTTP connection pool —
+Clients are cached because constructing one sets up an HTTP connection pool - 
 rebuilding it per turn adds avoidable latency to every message.
 """
 
