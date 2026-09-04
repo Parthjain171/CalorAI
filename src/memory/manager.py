@@ -39,7 +39,9 @@ import re
 from typing import Any, Dict, List, Sequence
 
 from src.db.queries import list_memories, touch_memories, upsert_memory
-from src.utils.config import settings
+# Module attribute, not `from ... import settings`: reload_settings() rebinds
+# config.settings, and a name imported at module load would keep the old copy.
+from src.utils import config
 
 CATEGORIES = ("preference", "goal", "usual_meal", "habit", "fact")
 ALWAYS_INJECTED = ("preference", "goal", "usual_meal")
@@ -84,7 +86,7 @@ def recall(
     user_id: str, query: str = "", limit: int | None = None
 ) -> List[Dict[str, Any]]:
     """Return the memories worth putting in front of the model this turn."""
-    cap = limit or settings.max_memories
+    cap = limit or config.settings.max_memories
     everything = list_memories(user_id)
     if not everything:
         return []

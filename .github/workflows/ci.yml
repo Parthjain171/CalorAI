@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      # Everything here runs against the scripted double: no keys, no network,
+      # deterministic. It proves the plumbing, not model quality.
+      CALORAI_MOCK: "1"
+      USDA_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: unit tests
+        run: pytest -q
+      - name: eval (11 conversations, 3 passes)
+        run: python eval/eval_runner.py --repeat 3
+      - name: eval can fail (sabotage check)
+        run: python eval/test_eval_detects_regressions.py
+      - name: demo walkthrough
+        run: python demo.py

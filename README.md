@@ -101,14 +101,29 @@ python cli.py --latency                          # p50/p95 report
 In-chat: `/img <path> [caption]`, `/totals`, `/meals`, `/memories`, `/latency`,
 `/reset`, `/help`, `/quit`.
 
-Run the eval set:
+See all 11 required conversations work, top to bottom, with the database shown
+after every turn:
 
 ```bash
-python eval/eval_runner.py                       # all 11 cases
+python demo.py
+```
+
+Run the tests and the eval set:
+
+```bash
+pytest                                           # 36 unit tests, no network
+python eval/eval_runner.py                       # all 11 cases, DB-asserted
 python eval/eval_runner.py --case 05 09 -v       # just the differentiators
 python eval/eval_runner.py --repeat 10           # more latency samples
 python eval/test_eval_detects_regressions.py     # proves the eval can fail
 ```
+
+The same four commands run in CI on every push
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on Python 3.11 and 3.12.
+
+Optional: a free [USDA FoodData Central key](https://fdc.nal.usda.gov/api-key-signup.html)
+in `USDA_API_KEY` adds measured nutrition data for foods outside the seed table
+(see [Tool Design](#tool-design)).
 
 **No API key?** `CALORAI_MOCK=1` swaps in a deterministic scripted stand-in for
 the conversation model, so the whole suite runs offline. It validates plumbing —
@@ -297,20 +312,29 @@ Design decisions worth defending:
   `contextvars.ContextVar` set per turn. The model cannot pick whose data it
   touches, and the schemas stay about food.
 
-### The nutrition lookup, in three tiers
+### The nutrition lookup, in four tiers
 
 Cheapest first, because most food is boring and repeated:
 
 1. **Seed table** — ~70 foods Indian users actually text about, in-process. ~0 ms,
    zero tokens. Handles most eval traffic.
-2. **SQLite cache** — anything an LLM has priced before, on any past run.
+2. **SQLite cache** — anything a lower tier has resolved before, on any past run.
    Survives restarts.
-3. **LLM estimator** — one batched call for whatever is left, then cached, so a
-   given food is paid for at most once ever.
+3. **USDA FoodData Central** — measured data for foods the seed table lacks.
+   One HTTP call per unknown food, fanned out concurrently, then cached, so each
+   distinct food costs one request ever. Generic datasets only (FNDDS,
+   Foundation, SR Legacy — never branded products), and a hit must contain every
+   token of the query, so "chai" can never resolve to "Chard, cooked". Optional:
+   off unless `USDA_API_KEY` is set. `DEMO_KEY` works but is capped at
+   **10 requests/hour** (measured from the `X-Ratelimit-Limit` header, not the
+   30 the docs suggest), so a circuit breaker stands the tier down for 15 min
+   after a 429 rather than paying a dead round-trip on every miss.
+4. **LLM estimator** — one batched call for whatever no database lists, then
+   cached.
 
-If the estimator is unreachable, a coarse keyword heuristic produces a number
-anyway. In a texting UX a roughly-right calorie count that gets logged beats an
-error message.
+If the estimator is unreachable too, a coarse keyword heuristic produces a
+number anyway. In a texting UX a roughly-right calorie count that gets logged
+beats an error message.
 
 ---
 
@@ -439,9 +463,12 @@ otherwise the reply is returned and streamed.
 **Two state decisions worth noting.** The system prompt is held in state as a
 plain string rather than as a message, because `add_messages` *appends* — a
 freshly built `SystemMessage` each turn would quietly stack up inside the
-checkpointer and grow context forever. And session history lives in a LangGraph
-checkpointer keyed on `user_id`, while anything that must outlive the process
-(meals, memories) lives in SQLite, not the message log.
+checkpointer and grow context forever. And conversation threads live in a
+LangGraph **SQLite checkpointer** keyed on `user_id` (`data/checkpoints.db`), so
+a clarifying question asked just before a restart is still pending afterwards
+and the user's answer lands against it. Meals and memories live in the
+application database, never in the message log — the thread is context, the
+tables are truth.
 
 **Why totals can't drift.** `daily_totals` is a SQL **view** aggregating meal
 rows on every read, not a maintained counter. An edit or delete is reflected the
@@ -455,6 +482,18 @@ that currently exist.
 All 11 required conversations pass. The eval asserts against the **database**,
 not the wording of the reply — a model that says "logged it!" and writes nothing
 fails, and a model that phrases things differently still passes.
+
+Three layers of testing, each catching a different class of mistake:
+
+| Layer | Command | Covers |
+|---|---|---|
+| Unit tests (36) | `pytest` | Data layer, nutrition tiers, memory ranking and cap, validation bounds, USDA parsing and circuit breaker, graph flows |
+| Eval set (11) | `python eval/eval_runner.py` | The required conversations, asserted on DB state |
+| Sabotage check | `python eval/test_eval_detects_regressions.py` | That the eval itself can fail |
+
+`python demo.py` runs the eleven top to bottom with seeded history, printing the
+rows after every turn — three cases ("same as yesterday", the correction, "my
+usual") need history to act on and look like no-ops when run cold.
 
 | # | Conversation | What is asserted |
 |---|---|---|
@@ -532,8 +571,10 @@ Worth recording, because both were silent-wrong-answer bugs rather than crashes:
 - The scripted double is a rule engine; a green mock run says nothing about how a
   real model handles phrasing it has never seen.
 - No retry/backoff around model calls beyond the SDK's own.
-- Nutrition numbers are model- and table-derived, not from a verified food
-  database.
+- Nutrition numbers come from the curated seed table, USDA where a key is set,
+  and model estimates only for dishes no database lists. The USDA tier reports
+  per-100 g servings (the search endpoint returns no portion sizes; fetching them
+  is a second request per food), so the model scales those by portion itself.
 
 ---
 
@@ -554,7 +595,10 @@ Approximate effort across the build, in the order it was done:
 | Eval set + regression-detection harness | 0.8 h |
 | Debugging the two silent bugs above | 0.6 h |
 | README | 0.7 h |
-| **Total** | **≈ 8.3 h** |
+| Pre-submission audit from a clean clone (7 defects fixed) | 0.8 h |
+| Free-provider support (Gemini + OpenAI-compatible hosts) | 0.4 h |
+| SQLite checkpointer, USDA tier, demo, unit tests, CI | 1.2 h |
+| **Total** | **≈ 10.7 h** |
 
 The single largest unplanned cost was the concurrency bug — it only appeared
 under repeated runs, which is precisely the argument for running an eval more
@@ -566,10 +610,10 @@ than once.
 
 In rough order of value per hour:
 
-1. **Real nutrition data.** Swap the LLM estimator for a food database
-   (USDA FoodData Central, or IFCT for Indian foods) behind the same
-   `lookup_nutrition` interface. Model-estimated macros are the weakest numbers
-   in the system and the tiering already makes this a drop-in third tier.
+1. **Indian food database.** USDA covers Indian staples thinly ("thepla" and
+   "rasam" return nothing). IFCT 2017 behind the same tier interface would move
+   most of the LLM-estimated long tail onto measured numbers, and portion sizes
+   from FNDDS' detail endpoint would replace the per-100 g serving.
 2. **Embedding-based memory recall.** Keyword overlap is the clearest limitation
    in the most important subsystem. Small local embeddings over memory values,
    keeping the tiering and the cap.
@@ -577,13 +621,11 @@ In rough order of value per hour:
    model already emits a confidence and a question; the agent asks, but a proper
    pending-confirmation state would stop an unanswered question from leaving a
    meal unlogged.
-4. **Persist conversation state.** Swap `MemorySaver` for LangGraph's SQLite
-   checkpointer so a mid-clarification thread survives a restart.
-5. **Portion learning.** If a user corrects "1 bowl of dal" to a bigger portion
+4. **Portion learning.** If a user corrects "1 bowl of dal" to a bigger portion
    three times, store that as a `habit` memory and stop getting it wrong.
-6. **LangSmith tracing.** The env hooks are in `.env.example`; wiring a public
+5. **LangSmith tracing.** The env hooks are in `.env.example`; wiring a public
    trace would make the tool-call sequences inspectable.
-7. **A real WhatsApp transport.** The agent interface (`chat` / `stream_chat`) is
+6. **A real WhatsApp transport.** The agent interface (`chat` / `stream_chat`) is
    already transport-agnostic; this is a webhook and media download away.
 
 ---
