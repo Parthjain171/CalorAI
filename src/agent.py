@@ -68,9 +68,10 @@ TOTALS: "how am I doing" -> get_daily_totals and quote the real numbers.
 
 MEMORY: durable facts (diet, goals, habits, what "my usual" means) ->
 store_memory, silently, same turn. Never meals or moods. "same as yesterday"
--> get_meals(period="yesterday"), then log_meal each returned meal with its
-STORED calories and macros (no lookup needed), then reply. "my usual" ->
-recall_memory.
+-> get_meals(period="yesterday"), then ONE response containing a log_meal call
+for EVERY returned meal, reusing its stored calories and macros, with NO
+meal_date (they are eaten today), then reply with the new total. "my usual"
+-> recall_memory.
 """
 
 

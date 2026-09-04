@@ -356,9 +356,40 @@ beats an error message.
 
 ## Latency Numbers
 
-**Be clear about what was and wasn't measured.** No API key was available in the
-build environment, so *end-to-end latency against real models is not measured
-here*. What follows separates the two honestly.
+Two things are measured and reported separately: what the models cost, and
+what the harness around them costs. All real-model numbers are from the
+verified Groq configuration (`gpt-oss-20b` text, `qwen3.8-27b` vision) on its
+**free tier**, which matters for reading the tails — see below.
+
+### Measured: real models
+
+From `python eval/eval_runner.py --pace 50` over the nine text cases (10 turns,
+30 model calls) plus the two photo cases run against a real plate photo:
+
+| Span | n | p50 | p95 | mean | max |
+|---|---|---|---|---|---|
+| `text_model_call` | 30 | **0.66 s** | 13.8 s | 1.90 s | 19.6 s |
+| `turn_text` (end to end) | 10 | **1.77 s** | 26.5 s | 6.19 s | 26.5 s |
+| `vision_model` | 2 | 2.0 s (warm) | — | — | 11.8 s (first call) |
+| `turn_image` (end to end) | 2 | **4.4 s** (warm) | — | — | 14.7 s (first call) |
+
+**Text turns land at 1.8 s p50 against a 3 s target; image turns at 4.4 s
+against 6 s.** A model call unthrottled is 0.4–0.8 s, and a turn is two or
+three of them: decide → tool(s) → reply.
+
+**The p95 is the free tier, not the model.** Groq meters `gpt-oss-20b` at
+8,000 tokens per minute (`x-ratelimit-limit-tokens: 8000`, read from the
+response headers). A turn arriving inside the same minute as the previous one
+is refused with a 429 and the SDK's backoff wait — 15–24 s per call — is what
+gets recorded. The `--pace` flag exists to separate the two: paced runs measure
+inference, unpaced runs measure the tier. Three of the ten turns above were
+still throttled even at 50 s pacing. There is no free Groq model with a bigger
+budget that supports custom tools (`compound-mini` has 70k TPM but rejects the
+`tools` parameter), so on a paid tier or a different provider this tail simply
+disappears; the inference numbers do not change.
+
+**The vision first-call penalty** (11.8 s once, then 2.0 s) is a warm-up on the
+provider side: both requests carried the same 78 KB downscaled JPEG.
 
 ### Measured: framework overhead
 
@@ -377,62 +408,71 @@ So the harness contributes **~30 ms at p50 and ~70 ms at p95**. Against a 3 s te
 budget that is ~2%, which means essentially the entire real-world budget is model
 time, and optimisation effort belongs there rather than in the graph.
 
-### Not measured: real model latency
-
-To produce real numbers, set a key and run:
+Reproduce either table:
 
 ```bash
-CALORAI_MOCK=0 python eval/eval_runner.py --repeat 5
-python cli.py --latency         # p50/p95 across every run, from data/latency.jsonl
+python eval/eval_runner.py --pace 50    # real model, paced under the tier
+python cli.py --latency                 # p50/p95 across every run, from data/latency.jsonl
 ```
 
 The instrumentation records nested spans (`turn_text` / `turn_image` contain
-`vision_model`, `text_model_call`, `nutrition_llm`, `time_to_first_token`), so
-the report attributes a slow turn rather than just reporting one.
-
-Expected shape, stated as reasoning rather than measurement:
-
-- **Text turn** = 2–3 sequential `text_model_call`s (decide → tools → reply).
-  Haiku-class calls with short prompts are typically a few hundred ms each, so a
-  simple log lands comfortably under the 3 s target; a correction, which needs
-  `get_meals` → `lookup_nutrition` → `update_meal` → reply, is the worst case at
-  4 round-trips.
-- **Image turn** = one vision call (the expensive part — a base64 image plus a
-  Sonnet-class model) **plus** the full text turn behind it. The vision hop is
-  strictly serial: the text model cannot decide what to log before knowing what
-  is on the plate. That serialisation is the honest cost of routing images to a
-  separate model, and it is the main reason the image budget is 6 s rather than 3 s.
+`vision_model`, `text_model_call`, `nutrition_llm`, `nutrition_api`,
+`time_to_first_token`), so a slow turn is attributed, not just reported.
 
 ### What was done to optimise
 
+The first real-model run was the most useful latency measurement of the
+project, because it was bad: turns of 15 s, 98 s, 21 s, 24 s, 89 s. Attribution
+showed every call carrying ~2,800 tokens of static prompt (800 of system
+prompt, 2,000 of tool schemas) **plus the entire replayed thread** — every past
+tool call and JSON result — so calls got slower turn by turn and the token
+budget was gone by turn three. Fixed in order of impact:
+
+- **Bounded history.** The model now sees the last `CALORAI_MAX_HISTORY_TOKENS`
+  (2,000) of the thread, trimmed from the end and never splitting a tool call
+  from its result. The full thread stays in the checkpointer; facts are in
+  SQLite, so the model only needs recency.
+- **Leaner static prompt.** System prompt 802 → 426 tokens, tool schemas
+  1,997 → 1,541, with every boundary rule kept. Per-call static cost ~2,800 →
+  ~1,970 tokens.
+- **Low reasoning effort** on reasoning models (`reasoning_effort=low`). Hidden
+  thinking tokens were being spent on "which tool, with what arguments".
+- **Image downscaling.** Photos are resized to 1,024 px and re-encoded as JPEG
+  before upload: 596 KB → 78 KB on the test photo.
 - **Batched nutrition lookups.** One tool call for every food in a message
-  instead of one per food — saves a whole model round-trip per extra food.
-- **Two-layer nutrition cache.** The seed table answers most lookups with zero
-  tokens and no network; LLM estimates are persisted to SQLite so a food is
-  priced at most once ever.
+  instead of one per food — a whole model round-trip saved per extra food.
+- **Nutrition cache.** Seed table answers most lookups with zero tokens; USDA
+  and LLM results are persisted, so a food is priced at most once ever.
 - **Totals folded into `log_meal`.** Removes a `get_daily_totals` round-trip from
   the most common interaction.
-- **Cached model clients** (`lru_cache`), so no turn pays to rebuild an HTTP
-  connection pool.
-- **Small model on the hot path.** Haiku for conversation; Sonnet only when there
-  is actually a photo.
+- **"Same as yesterday" re-logs stored macros** instead of re-pricing — two
+  fewer calls, and no re-pricing drift.
+- **Cached model clients** (`lru_cache`), so no turn rebuilds a connection pool.
 - **Streaming** (`stream_chat`), with `time_to_first_token` recorded separately —
   streaming doesn't make a turn faster, but time-to-first-token is the latency a
   user actually feels.
 - **Parallel tool calls** work (LangGraph's `ToolNode` runs them on a thread
   pool). This is what surfaced the SQLite concurrency bug described below.
 
+After these, unthrottled calls measured 0.57–0.72 s and a fresh-budget turn
+5.6 s from a cold process — of which ~3.7 s is Python startup, not the agent.
+
 ### What is still slow, and why
 
+- **Free-tier throttling.** 8,000 tokens/minute cannot absorb back-to-back
+  multi-call turns whatever the prompt size; the tail in the table above is
+  that, and only a paid tier or another provider removes it.
 - **The vision hop is serial and unavoidable** in this design. Speculatively
-  starting the text model before vision returns would just waste tokens, since
-  every downstream decision depends on what the food is.
+  starting the text model before vision returns would waste tokens, since every
+  downstream decision depends on what the food is. Add a first-call warm-up on
+  the provider side.
 - **Corrections take 4 model round-trips** (find → re-price → update → reply).
   Collapsing find-and-update into one tool would be faster but would blur the
   `log`/`update` boundary that keeps double-counting impossible — a trade I chose
   not to make.
-- **A cache miss adds a full extra model call** inside the turn. It is capped at
-  one call per turn by batching, and never repeats for the same food.
+- **A cache miss adds a model call** inside the turn (0.77 s measured for
+  "chicken quinoa bowl"). Capped at one per turn by batching, never repeated
+  for the same food.
 - **p95 over small samples is indicative only.** The report says so itself when
   n < 20 rather than implying more precision than the data supports.
 
@@ -614,7 +654,8 @@ Approximate effort across the build, in the order it was done:
 | Pre-submission audit from a clean clone (7 defects fixed) | 0.8 h |
 | Free-provider support (Gemini + OpenAI-compatible hosts) | 0.4 h |
 | SQLite checkpointer, USDA tier, demo, unit tests, CI | 1.2 h |
-| **Total** | **≈ 10.7 h** |
+| Real-model verification: provider probing, latency attribution, 4 bugs fixed | 1.5 h |
+| **Total** | **≈ 12.2 h** |
 
 The single largest unplanned cost was the concurrency bug — it only appeared
 under repeated runs, which is precisely the argument for running an eval more
@@ -671,6 +712,13 @@ Where it needed correcting — worth being specific, since this is the honest pa
 - The first vision integration appended the `[VISION]` note as a separate
   message, which silently broke the caption path — caught only because case 9
   asserts against a measured full-plate baseline rather than a fixed number.
+- Everything above was validated against a scripted double first. The first
+  run against a real model then found four things the double could not:
+  an invented `ask_question` tool, an empty reply mid-task, a compound food
+  ("2 idli and sambar") priced as one of its parts, and the vision model
+  applying a portion the text model would apply again. Each became a guard, a
+  fix, and a test. A green mock run is a necessary condition, not a sufficient
+  one.
 
 Model IDs and pricing were taken from Anthropic's current model documentation
 rather than from recall.

@@ -108,7 +108,9 @@ def log_meal(
         description: Portion detail, e.g. "~2/3 of the box".
         meal_type: breakfast, lunch, dinner or snack.
         source: "text", "vision" or "vision+text".
-        meal_date: Local YYYY-MM-DD; omit for today.
+        meal_date: OMIT unless the user says the meal was on another day
+            ("forgot to log yesterday's dinner"). Never copy a date from
+            get_meals - "same as yesterday" is eaten TODAY.
     """
     meal_type = meal_type.lower().strip()
     if meal_type not in MEAL_TYPES:
