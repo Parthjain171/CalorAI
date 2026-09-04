@@ -69,8 +69,8 @@ has a genuinely free tier** — grab a key at
 
 ```ini
 GOOGLE_API_KEY=your-free-key
-TEXT_MODEL=gemini-2.0-flash-lite
-VISION_MODEL=gemini-2.0-flash
+TEXT_MODEL=gemini-3.5-flash-lite
+VISION_MODEL=gemini-3.5-flash
 ```
 
 The provider is inferred from the model id, so any of these work by editing
@@ -154,9 +154,9 @@ That holds across every supported provider.
 
 | Path | Model | Why |
 |---|---|---|
-| Conversation + tool calling | `gemini-2.0-flash-lite` | Fastest/cheapest tier, solid function calling. Runs on ~90% of turns. |
-| Vision (food recognition) | `gemini-2.0-flash` | Stronger multimodal reasoning for identifying dishes and judging portions. |
-| Nutrition estimation | `gemini-2.0-flash-lite` | On the critical path, emits ~200 tokens of JSON. Rarely called (see caching). |
+| Conversation + tool calling | `gemini-3.5-flash-lite` | Fastest/cheapest tier, solid function calling. Runs on ~90% of turns. |
+| Vision (food recognition) | `gemini-3.5-flash` | Stronger multimodal reasoning for identifying dishes and judging portions. |
+| Nutrition estimation | `gemini-3.5-flash-lite` | On the critical path, emits ~200 tokens of JSON. Rarely called (see caching). |
 
 Gemini is the default because it is the only major provider with a genuinely
 free API tier that offers **both** reliable tool calling and native vision —

@@ -1,6 +1,6 @@
 """Chat model factory for the text (conversation + tool calling) path.
 
-The provider is inferred from the model id, so ``TEXT_MODEL=gemini-2.0-flash``,
+The provider is inferred from the model id, so ``TEXT_MODEL=gemini-3.5-flash-lite``,
 ``TEXT_MODEL=gpt-4o-mini`` and ``TEXT_MODEL=claude-haiku-4-5`` all work without
 touching code.
 
@@ -71,12 +71,15 @@ def _build(model_id: str, temperature: float, max_tokens: int) -> BaseChatModel:
                 "and set GOOGLE_API_KEY (free key: https://aistudio.google.com/apikey)"
             ) from exc
 
+        # Gemini 3.x models use fixed sampling and warn if temperature is
+        # passed; older ones honour it. Only send it where it means something.
+        sampling = {} if model_id.lower().startswith("gemini-3") else {"temperature": temperature}
         return ChatGoogleGenerativeAI(
             model=model_id,
-            temperature=temperature,
             max_output_tokens=max_tokens,
             timeout=30,
             max_retries=2,
+            **sampling,
         )
 
     from langchain_openai import ChatOpenAI
