@@ -26,7 +26,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from src.memory.manager import format_for_prompt, recall
-from src.models.text_model import get_chat_model
+from src.models.text_model import _build, get_chat_model
 from src.models.vision_model import analyze_image, format_vision_note
 from src.tools import ALL_TOOLS
 from src.utils.config import local_date_str, local_now, settings
@@ -149,11 +149,12 @@ def _prepare(state: AgentState) -> Dict[str, Any]:
     Memory is selected per turn against the incoming message rather than dumped
     wholesale - see :mod:`src.memory.manager` for the tiering and the cap.
     """
-    memories = recall(state["user_id"], _latest_user_text(state["messages"]))
-    prompt = _system_prompt()
-    memory_block = format_for_prompt(memories)
-    if memory_block:
-        prompt = f"{prompt}\n{memory_block}\n"
+    with measure("node_prepare"):
+        memories = recall(state["user_id"], _latest_user_text(state["messages"]))
+        prompt = _system_prompt()
+        memory_block = format_for_prompt(memories)
+        if memory_block:
+            prompt = f"{prompt}\n{memory_block}\n"
     return {"system_prompt": prompt}
 
 
@@ -218,9 +219,10 @@ def _agent_node(state: AgentState) -> Dict[str, Any]:
     turns that into the plain-text question it should have been, instead of
     surfacing a provider error to the user.
     """
-    model = get_chat_model(settings.text_model).bind_tools(ALL_TOOLS)
-    history = _bounded_history(list(state["messages"]))
-    conversation = [SystemMessage(content=state["system_prompt"])] + history
+    with measure("node_agent_setup"):
+        model = get_chat_model(settings.text_model).bind_tools(ALL_TOOLS)
+        history = _bounded_history(list(state["messages"]))
+        conversation = [SystemMessage(content=state["system_prompt"])] + history
     with measure("text_model_call", model=settings.text_model) as span:
         span["history_messages"] = len(history)
         try:
@@ -278,11 +280,23 @@ def build_graph(checkpointer: Optional[Any] = None) -> Any:
     Pass ``checkpointer=MemorySaver()`` for throwaway sessions (tests); the
     default persists conversation threads to SQLite.
     """
+    tool_node = ToolNode(ALL_TOOLS)
+
+    def _tools(state: AgentState) -> Dict[str, Any]:
+        """Execute the tool calls the model asked for, timed as one span."""
+        names = [
+            call["name"]
+            for message in state["messages"][-1:]
+            for call in (getattr(message, "tool_calls", None) or [])
+        ]
+        with measure("node_tools", tools=",".join(names)):
+            return tool_node.invoke(state)
+
     graph = StateGraph(AgentState)
     graph.add_node("vision", _vision)
     graph.add_node("prepare", _prepare)
     graph.add_node("agent", _agent_node)
-    graph.add_node("tools", ToolNode(ALL_TOOLS))
+    graph.add_node("tools", _tools)
 
     # vision no-ops on text-only turns, so the text path pays nothing for it.
     graph.set_entry_point("vision")
@@ -299,6 +313,31 @@ class CalorAIAgent:
 
     def __init__(self, persistent: bool = True) -> None:
         self.graph = build_graph(None if persistent else MemorySaver())
+        self._warm_models()
+
+    @staticmethod
+    def _warm_models() -> None:
+        """Import and construct the model clients now, not inside the first turn.
+
+        Measured: the first user turn of every process was paying 4 to 11
+        seconds in ``node_agent_setup`` before any model call - the lazy import
+        of the provider SDK plus client construction. Doing it here moves that
+        cost to startup, where it is expected, and the first reply lands at the
+        same speed as every later one. Clients are lru_cached, so this is the
+        only time it runs.
+        """
+        if settings.mock:
+            return
+        with measure("warm_models"):
+            for model_id, temperature, max_tokens in (
+                (settings.text_model, 0.0, 1024),
+                (settings.nutrition_model, 0.0, 600),
+                (settings.vision_model, 0.0, 700),
+            ):
+                try:
+                    _build(model_id, temperature, max_tokens)
+                except Exception:  # noqa: BLE001 - a bad vision config must not block text
+                    pass
 
     def chat(
         self, user_id: str, message: str, image_path: Optional[str] = None
