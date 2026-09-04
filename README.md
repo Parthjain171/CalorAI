@@ -350,7 +350,7 @@ Assumptions: one user per CLI session with no auth; a day is the local calendar 
 
 ## AI tools used
 
-**Claude Code** as the pair programmer for essentially the whole build: scaffolding, schema, LangGraph wiring, the seed table, tests, and this README.
+An **AI coding assistant** as the pair programmer for essentially the whole build: scaffolding, schema, LangGraph wiring, the seed table, tests, and this README.
 
 Where it helped most: volume with structure (70 seed foods, 8 tool docstrings, 38 tests), and debugging from evidence rather than guessing.
 
