@@ -90,11 +90,14 @@ def log_meal(
     # meal_date is applied post-insert so the stored UTC timestamp stays truthful
     # about when it was recorded while the day it counts toward can be steered.
     if meal_date and meal_date != meal["meal_date"]:
-        from src.db.schema import get_connection
+        from src.db.schema import connection
 
-        conn = get_connection()
-        conn.execute("UPDATE meals SET meal_date = ? WHERE id = ?", (meal_date, meal["id"]))
-        conn.commit()
+        with connection() as conn:
+            conn.execute(
+                "UPDATE meals SET meal_date = ? WHERE id = ? AND user_id = ?",
+                (meal_date, meal["id"], get_user_id()),
+            )
+            conn.commit()
         meal["meal_date"] = meal_date
 
     return {

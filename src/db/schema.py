@@ -14,8 +14,10 @@ never drift from the meal rows that produced them.
 from __future__ import annotations
 
 import sqlite3
+import threading
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from src.utils.config import settings
 
@@ -82,6 +84,29 @@ GROUP BY user_id, meal_date;
 
 _connection: Optional[sqlite3.Connection] = None
 
+# LangGraph's ToolNode runs parallel tool calls on a thread pool, so two
+# log_meal calls genuinely execute at once ("same as yesterday" replays several
+# meals in one turn). A single sqlite3 connection is NOT safe for concurrent
+# use: this showed up as insert_meal returning None roughly one run in twenty,
+# because the INSERT and the SELECT that reads lastrowid were interleaved by
+# another thread. Every database access is serialised through this lock.
+#
+# Serialising costs nothing real here - SQLite serialises writes anyway, and
+# these queries are sub-millisecond. The parallelism that matters (model calls,
+# nutrition lookups) happens outside the lock.
+_db_lock = threading.RLock()
+
+
+@contextmanager
+def connection() -> Iterator[sqlite3.Connection]:
+    """Yield the shared connection with exclusive access held for the block.
+
+    Re-entrant, so a helper that needs the connection can be called from inside
+    another block that already holds it.
+    """
+    with _db_lock:
+        yield get_connection()
+
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     """Return the process-wide connection, creating the schema on first use."""
@@ -89,9 +114,9 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     if _connection is None:
         path = db_path or settings.db_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        # check_same_thread=False: LangGraph may execute tool nodes on a worker
-        # thread. Writes are short and serialised by SQLite's own locking.
-        _connection = sqlite3.connect(str(path), check_same_thread=False)
+        # check_same_thread=False lets worker threads reach this connection;
+        # _db_lock is what actually makes that safe.
+        _connection = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
         _connection.row_factory = sqlite3.Row
         _connection.execute("PRAGMA journal_mode=WAL")
         _connection.execute("PRAGMA foreign_keys=ON")
@@ -110,8 +135,9 @@ def close_connection() -> None:
 
 def reset_database(db_path: Optional[Path] = None) -> None:
     """Drop every row. Used by the eval runner to start from a clean slate."""
-    conn = get_connection(db_path)
-    conn.executescript(
-        "DELETE FROM meals; DELETE FROM memories; DELETE FROM nutrition_cache;"
-    )
-    conn.commit()
+    with _db_lock:
+        conn = get_connection(db_path)
+        conn.executescript(
+            "DELETE FROM meals; DELETE FROM memories; DELETE FROM nutrition_cache;"
+        )
+        conn.commit()
