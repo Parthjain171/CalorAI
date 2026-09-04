@@ -1,10 +1,12 @@
 """``lookup_nutrition`` — the only tool that knows what food is worth.
 
-Three tiers, cheapest first:
+Four tiers, cheapest first:
 
 1. **Seed table** (``nutrition_data.SEED_NUTRITION``) — in-process dict, ~0 ms.
-2. **SQLite cache** — anything an LLM has estimated before, on any past run.
-3. **LLM estimator** — one small batched call for whatever is left, then cached.
+2. **SQLite cache** — anything a lower tier has resolved before, on any past run.
+3. **USDA FoodData Central** (``nutrition_api``) — measured data, one HTTP call
+   per unknown food, fanned out concurrently, then cached.
+4. **LLM estimator** — one small batched call for whatever no database lists.
 
 The tool takes a *list* of foods rather than one. A message like "2 parathas and
 chai" needs two lookups; batching them into a single tool call saves a whole
@@ -137,6 +139,25 @@ def _resolve_many(items: List[Tuple[str, float]]) -> List[Dict[str, Any]]:
         misses.setdefault(key, []).append(index)
 
     if misses:
+        # Tier 3: a real nutrition database, fanned out concurrently. Measured
+        # numbers beat a model's guess, and each hit is cached for good.
+        from src.tools.nutrition_api import lookup_usda_many
+
+        for key, hit in lookup_usda_many(list(misses)).items():
+            put_cached_nutrition(
+                key, key, hit["serving"], hit["calories"], hit["protein"],
+                hit["carbs"], hit["fat"], "usda",
+            )
+            for index in misses[key]:
+                resolved[index] = {
+                    "key": key, "serving": hit["serving"], "calories": hit["calories"],
+                    "protein": hit["protein"], "carbs": hit["carbs"],
+                    "fat": hit["fat"], "source": "usda",
+                }
+        misses = {k: v for k, v in misses.items() if resolved[v[0]] is None}
+
+    if misses:
+        # Tier 4: the LLM, only for what no database lists.
         estimates = _estimate_with_llm(list(misses))
         lowered = {str(k).lower(): v for k, v in estimates.items()}
         for key, indices in misses.items():

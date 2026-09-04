@@ -44,6 +44,7 @@ class Settings:
     tz_offset_hours: float
     max_memories: int
     mock: bool
+    usda_api_key: str
 
     @property
     def tz(self) -> timezone:
@@ -62,6 +63,8 @@ def _load() -> Settings:
         tz_offset_hours=float(_env("CALORAI_TZ_OFFSET_HOURS", "5.5")),
         max_memories=int(_env("CALORAI_MAX_MEMORIES", "8")),
         mock=_env("CALORAI_MOCK", "0") not in ("0", "false", "False"),
+        # Off unless set. DEMO_KEY works but is capped at 10 requests/hour.
+        usda_api_key=os.environ.get("USDA_API_KEY", "").strip(),
     )
 
 
