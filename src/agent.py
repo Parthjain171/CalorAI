@@ -15,6 +15,7 @@ lives in SQLite, not in the message log.
 
 from __future__ import annotations
 
+import sys
 import time
 from typing import Annotated, Any, Dict, Iterator, List, Optional, TypedDict
 
@@ -250,7 +251,19 @@ def _sqlite_checkpointer() -> Any:
     """
     import sqlite3
 
-    from langgraph.checkpoint.sqlite import SqliteSaver
+    try:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+    except ImportError:
+        # Usually means the wrong interpreter (global python instead of the
+        # project venv). Run in-memory rather than refuse to start; the only
+        # loss is that threads will not survive a restart.
+        print(
+            "warning: langgraph-checkpoint-sqlite not installed in this interpreter; "
+            "conversation threads will not persist across restarts. "
+            "Activate the venv (.\\.venv\\Scripts\\activate) or pip install -r requirements.txt.",
+            file=sys.stderr,
+        )
+        return MemorySaver()
 
     path = settings.checkpoint_db_path
     path.parent.mkdir(parents=True, exist_ok=True)
