@@ -63,30 +63,36 @@ pip install -r requirements.txt
 cp .env.example .env              # Windows: copy .env.example .env
 ```
 
-Then put a key in `.env`. **The default configuration uses Google Gemini, which
-has a genuinely free tier** — grab a key at
-[aistudio.google.com/apikey](https://aistudio.google.com/apikey):
+Then put a key in `.env`. **The default configuration runs on Groq's free tier**
+(no card) — create a key at [console.groq.com/keys](https://console.groq.com/keys):
 
 ```ini
-GOOGLE_API_KEY=your-free-key
-TEXT_MODEL=gemini-3.5-flash-lite
-VISION_MODEL=gemini-3.5-flash
+OPENAI_API_KEY=gsk_...your-groq-key...
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+TEXT_MODEL=openai/gpt-oss-20b
+VISION_MODEL=qwen/qwen3.8-27b
+NUTRITION_MODEL=openai/gpt-oss-20b
 ```
 
-The provider is inferred from the model id, so any of these work by editing
-`.env` alone — no code change. `.env.example` has a ready block for each:
+This is the configuration every real-model number in this README was measured
+on. The provider is inferred from the model id and base URL, so any of these
+work by editing `.env` alone — no code change. `.env.example` has a ready
+block for each:
 
-| Provider | Free? | Env |
-|---|---|---|
-| Google Gemini | **Yes, free tier** | `GOOGLE_API_KEY` |
-| Anthropic | Paid | `ANTHROPIC_API_KEY` |
-| OpenAI | Paid | `OPENAI_API_KEY` |
-| Groq / GitHub Models / OpenRouter / Ollama | Free tiers / local | `OPENAI_API_KEY` + `OPENAI_BASE_URL` |
+| Provider | Free? | Env | Status |
+|---|---|---|---|
+| Groq | **Yes, free tier** | `OPENAI_API_KEY` + `OPENAI_BASE_URL` | **Verified end to end** |
+| Google Gemini | Yes, free tier | `GOOGLE_API_KEY` | Wired and tested to the API; see note |
+| Anthropic | Paid | `ANTHROPIC_API_KEY` | Wired; client constructs, no paid run |
+| OpenAI / GitHub Models / OpenRouter / Ollama | Paid / free / local | `OPENAI_API_KEY` (+ `OPENAI_BASE_URL`) | Same client as Groq |
 
-The last row is a generic OpenAI-compatible client: set `OPENAI_BASE_URL` to the
-host (e.g. `https://api.groq.com/openai/v1`, or `http://localhost:11434/v1` for
-a fully local Ollama) and use that host's model names. Whatever you pick, the
-text and vision paths stay two **different** models.
+Gemini note: the integration is complete and the key authenticates, but Google
+returned `403 PERMISSION_DENIED: Your project has been denied access` for every
+model on the account used to build this — a restriction Google applies to some
+new accounts, unrelated to the code. If your account is not restricted, the
+Gemini block in `.env.example` should work as is.
+
+Whatever you pick, the text and vision paths stay two **different** models.
 
 Run it:
 
@@ -150,19 +156,29 @@ The split matters more than the specific vendor: **a small fast model for
 conversation and tool calling, a stronger one for recognising food in photos.**
 That holds across every supported provider.
 
-**Default (free tier) — Google Gemini:**
+**Default (free tier, verified) — Groq:**
 
 | Path | Model | Why |
 |---|---|---|
-| Conversation + tool calling | `gemini-3.5-flash-lite` | Fastest/cheapest tier, solid function calling. Runs on ~90% of turns. |
-| Vision (food recognition) | `gemini-3.5-flash` | Stronger multimodal reasoning for identifying dishes and judging portions. |
-| Nutrition estimation | `gemini-3.5-flash-lite` | On the critical path, emits ~200 tokens of JSON. Rarely called (see caching). |
+| Conversation + tool calling | `openai/gpt-oss-20b` | Correct tool calls on every test turn; ~0.6 s per call unthrottled. Runs on ~90% of turns. |
+| Vision (food recognition) | `qwen/qwen3.8-27b` | The only current Groq family that accepts images; clean JSON output (its 3.6 sibling leaks `<think>` blocks). |
+| Nutrition estimation | `openai/gpt-oss-20b` | On the critical path, emits ~200 tokens of JSON. Rarely called (see caching). |
 
-Gemini is the default because it is the only major provider with a genuinely
-free API tier that offers **both** reliable tool calling and native vision —
-the two things this agent cannot work without. Check
-[AI Studio](https://aistudio.google.com/) for the exact model names your key has;
-they are env vars, so adjusting is a one-line change.
+Chosen by measurement, not by reputation. Groq's lineup for a free key was
+listed live (`/models`), then every candidate was probed: three models make
+correct tool calls (`gpt-oss-20b` 0.5 s, `gpt-oss-120b` 3.3 s, `qwen3.8-27b`
+0.4 s), two accept images (both qwen), and `gpt-oss` is text-only. `gpt-oss-120b`
+alone would have consumed the 3 s turn budget on a single call. `gpt-oss-20b`
+runs with `reasoning_effort=low` — hidden reasoning tokens are wasted on "which
+tool, with what arguments", and they count against the free tier's per-minute
+budget.
+
+The two model families are deliberately different: gpt-oss cannot see, qwen
+can, and each does the job it is best at.
+
+**Alternative (free tier) — Google Gemini:** `gemini-3.5-flash-lite` for text,
+`gemini-3.5-flash` for vision, one `GOOGLE_API_KEY`. Fully wired; see the account
+restriction note under Setup.
 
 **Paid equivalent — Anthropic** (the original configuration):
 
