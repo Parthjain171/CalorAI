@@ -149,24 +149,49 @@ class ScriptedChatModel(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        user_text, tail = self._turn_slice(messages)
-        # Vision output is injected as a system-role line; fold it into the text
-        # the rules see so a photo and its caption resolve as one meal.
-        vision_note = ""
-        for message in messages:
-            content = _text_of(message)
-            if content.startswith("[VISION]"):
-                vision_note = content
-        combined = f"{vision_note} {user_text}".strip()
+        turn_text, tail = self._turn_slice(messages)
+        # A photo turn arrives as one message: the caption, then the [VISION]
+        # note. Split them - foods come from the note's canonical FOODS: line,
+        # while portion phrases ("half of this") come from what the user typed.
+        caption, _, vision = turn_text.partition("[VISION]")
+        user_text = caption.strip() or turn_text
+        combined = turn_text
         results = self._tool_results(tail)
         rounds = sum(
             1 for m in tail if isinstance(m, AIMessage) and m.tool_calls
         )
-        message = self._decide(combined, user_text, results, rounds)
+        message = self._decide(combined, user_text, vision, results, rounds)
         return ChatResult(generations=[ChatGeneration(message=message)])
 
+    @staticmethod
+    def _vision_foods(vision: str, caption: str) -> List[Dict[str, Any]]:
+        """Read the FOODS: line, scaled by any portion phrase in the caption."""
+        match = re.search(r"FOODS:\s*(.+)", vision)
+        if not match:
+            return []
+        scale = 1.0
+        lowered_caption = caption.lower()
+        for phrase, value in _FRACTION_PHRASES:
+            if phrase in lowered_caption:
+                scale = value
+                break
+        foods: List[Dict[str, Any]] = []
+        for entry in match.group(1).split(","):
+            parsed = re.match(r"\s*([\d.]+)x\s+(.+?)\s*$", entry)
+            if parsed:
+                foods.append({
+                    "food": parsed.group(2),
+                    "servings": round(float(parsed.group(1)) * scale, 2),
+                })
+        return foods
+
     def _decide(
-        self, combined: str, user_text: str, results: Dict[str, Any], rounds: int
+        self,
+        combined: str,
+        user_text: str,
+        vision: str,
+        results: Dict[str, Any],
+        rounds: int,
     ) -> AIMessage:
         lowered = combined.lower()
 
@@ -196,8 +221,11 @@ class ScriptedChatModel(BaseChatModel):
         if "usual" in lowered:
             return self._usual(results, rounds)
 
-        # 6. Too vague to log — ask rather than invent.
-        foods = _parse_foods(combined)
+        # 6. A photo turn takes its foods from the vision note; otherwise parse
+        #    the message. Nothing recognised means ask rather than invent.
+        if vision and "confidence is low" in vision.lower():
+            return AIMessage(content=self._confirm_photo(vision))
+        foods = self._vision_foods(vision, user_text) if vision else _parse_foods(combined)
         if not foods:
             return AIMessage(content=self._clarify(lowered))
 
@@ -208,7 +236,7 @@ class ScriptedChatModel(BaseChatModel):
             )
         if rounds == 1 and "lookup_nutrition" in results:
             total = results["lookup_nutrition"]["total"]
-            source = "vision+text" if combined.startswith("[VISION]") else "text"
+            source = "vision+text" if vision else "text"
             name = ", ".join(
                 f"{f['servings']:g} {f['food']}" for f in foods
             )
@@ -340,6 +368,14 @@ class ScriptedChatModel(BaseChatModel):
             match = re.search(r"\bi (don'?t|do not) eat ([a-z ]+)", lowered)
             return {"key": "avoids", "value": match.group(2).strip(), "category": "preference"}
         return None
+
+    @staticmethod
+    def _confirm_photo(vision: str) -> str:
+        """Low-confidence photo: confirm before logging rather than guess."""
+        match = re.search(r"FOODS:\s*(.+)", vision)
+        items = match.group(1) if match else "that"
+        readable = re.sub(r"[\d.]+x\s*", "", items).replace(",", " and")
+        return f"Looks like {readable.strip()} — is that right?"
 
     @staticmethod
     def _clarify(lowered: str) -> str:

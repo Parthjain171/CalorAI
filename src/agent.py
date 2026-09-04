@@ -25,6 +25,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from src.memory.manager import format_for_prompt, recall
 from src.models.text_model import get_chat_model
+from src.models.vision_model import analyze_image, format_vision_note
 from src.tools import ALL_TOOLS
 from src.utils.config import local_date_str, local_now, settings
 from src.utils.user_context import user_scope
@@ -55,6 +56,14 @@ WHEN TO ASK VS WHEN TO LOG
   afternoon" -> ask ONE short question naming examples to make answering easy.
 - Ask at most one clarifying question, then work with whatever you get back.
   Over-asking is worse than a slightly wrong estimate.
+
+PHOTOS
+- A photo arrives already analysed, as a [VISION] message listing what was
+  identified. Trust it, but the user's own words override it: if the vision note
+  says 1x biryani and they typed "half of this was my brother's", that is ONE
+  meal at 0.5 servings — never a photo meal plus a caption meal.
+- If the [VISION] note says confidence is LOW, ask a short confirming question
+  ("looks like rice and dal — is that right?") before logging.
 
 CORRECTIONS
 - "actually that was 3 rotis not 2", "make that a large" — the user is fixing a
@@ -113,6 +122,34 @@ def _latest_user_text(messages: List[BaseMessage]) -> str:
     return ""
 
 
+def _vision(state: AgentState) -> Dict[str, Any]:
+    """Run the vision model when a photo is attached, and only then.
+
+    Its structured output is appended as one ``[VISION] ...`` message so the
+    text model reads the photo and the caption in the same turn — which is what
+    collapses "photo + 'half of this was my brother's'" into a single meal.
+    """
+    image_path = state.get("image_path")
+    if not image_path:
+        return {}
+
+    caption = _latest_user_text(state["messages"])
+    note = format_vision_note(analyze_image(image_path, caption=caption))
+
+    # Merge the note INTO the user's own message rather than appending a new
+    # one. A separate message would become the "latest user message", hiding the
+    # caption from anything that reads it — and the caption is exactly what
+    # turns "1x biryani" into half a portion. Reusing the message id makes
+    # add_messages replace in place instead of appending.
+    original = next(
+        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
+    )
+    merged = f"{caption}\n\n{note}" if caption else note
+    if original is None:
+        return {"messages": [HumanMessage(content=merged)]}
+    return {"messages": [HumanMessage(content=merged, id=original.id)]}
+
+
 def _prepare(state: AgentState) -> Dict[str, Any]:
     """Rebuild the system prompt for this turn, with relevant memories injected.
 
@@ -137,11 +174,14 @@ def _agent_node(state: AgentState) -> Dict[str, Any]:
 def build_graph(checkpointer: Optional[Any] = None) -> Any:
     """Compile the agent graph."""
     graph = StateGraph(AgentState)
+    graph.add_node("vision", _vision)
     graph.add_node("prepare", _prepare)
     graph.add_node("agent", _agent_node)
     graph.add_node("tools", ToolNode(ALL_TOOLS))
 
-    graph.set_entry_point("prepare")
+    # vision no-ops on text-only turns, so the text path pays nothing for it.
+    graph.set_entry_point("vision")
+    graph.add_edge("vision", "prepare")
     graph.add_edge("prepare", "agent")
     graph.add_conditional_edges("agent", tools_condition, {"tools": "tools", END: END})
     graph.add_edge("tools", "agent")
