@@ -129,16 +129,29 @@ class ScriptedChatModel(BaseChatModel):
 
     @staticmethod
     def _tool_results(tail: Sequence[BaseMessage]) -> Dict[str, Any]:
-        """Most recent result per tool name, parsed back into Python objects."""
+        """Most recent result per tool name, parsed back into Python objects.
+
+        ToolNode serialises dict returns as JSON, so ``None`` arrives as
+        ``null`` — which ast.literal_eval cannot read. JSON is tried first and
+        the literal parser is the fallback, so a payload containing None no
+        longer silently degrades into a raw string.
+        """
         import ast
+        import json
 
         results: Dict[str, Any] = {}
         for message in tail:
-            if isinstance(message, ToolMessage):
+            if not isinstance(message, ToolMessage):
+                continue
+            raw = str(message.content)
+            for parse in (json.loads, ast.literal_eval):
                 try:
-                    results[message.name or "?"] = ast.literal_eval(str(message.content))
-                except (ValueError, SyntaxError):
-                    results[message.name or "?"] = str(message.content)
+                    results[message.name or "?"] = parse(raw)
+                    break
+                except (ValueError, SyntaxError, TypeError):
+                    continue
+            else:
+                results[message.name or "?"] = raw
         return results
 
     # --- the script ----------------------------------------------------------
@@ -200,12 +213,25 @@ class ScriptedChatModel(BaseChatModel):
         if re.search(r"\b(actually|not \d|i meant|correction|make that|instead)\b", lowered):
             return self._correction(lowered, results, rounds)
 
-        # 2. Questions about the day.
+        # 2. Questions about the day's numbers.
         if re.search(r"\b(how am i doing|how much|how many|what.*total|left|so far)\b", lowered):
             if rounds == 0:
                 return AIMessage(content="", tool_calls=[_tool_call("get_daily_totals", {})])
             totals = results.get("get_daily_totals", {})
             return AIMessage(content=self._totals_reply(lowered, totals))
+
+        # 2b. "what did I eat" is a RETRIEVAL question, not something to log.
+        # Without this it falls through to food parsing, finds no food, and
+        # wrongly asks the user what they ate.
+        if re.search(r"\bwhat (did|have) i (eat|ate|had|have)\b", lowered):
+            period = "yesterday" if "yesterday" in lowered else "today"
+            if rounds == 0:
+                return AIMessage(content="", tool_calls=[
+                    _tool_call("get_meals", {"period": period})
+                ])
+            return AIMessage(
+                content=self._meals_reply(period, results.get("get_meals", {}))
+            )
 
         # 3. Durable facts about the user.
         preference = self._preference(user_text)
@@ -390,6 +416,16 @@ class ScriptedChatModel(BaseChatModel):
         return "Happy to log that — what did you eat exactly?"
 
     @staticmethod
+    def _meals_reply(period: str, result: Dict[str, Any]) -> str:
+        """Read back logged meals for a day."""
+        meals = result.get("meals", [])
+        if not meals:
+            return f"You haven't logged anything for {period}."
+        listed = ", ".join(f"{m['meal_name']} ({m['calories']:g} cal)" for m in meals)
+        total = sum(m["calories"] for m in meals)
+        return f"{period.capitalize()} you had {listed} — {total:g} cal in total."
+
+    @staticmethod
     def _totals_reply(lowered: str, totals: Dict[str, Any]) -> str:
         if "protein" in lowered:
             return f"You're at {totals.get('protein', 0):g}g protein today."
@@ -401,6 +437,9 @@ class ScriptedChatModel(BaseChatModel):
 
     @staticmethod
     def _logged_reply(logged: Dict[str, Any]) -> str:
+        if not isinstance(logged, dict) or logged.get("error"):
+            reason = logged.get("error") if isinstance(logged, dict) else str(logged)
+            return f"I didn't log that — {reason}"
         meal = logged.get("logged", {})
         totals = logged.get("daily_totals", {})
         return (

@@ -75,12 +75,21 @@ def _print_memories(user_id: str) -> None:
         print(f"  [{memory['category']:<10}] {memory['key']:<18} {memory['value']}")
 
 
-def _send(agent: CalorAIAgent, user_id: str, text: str, image: Optional[str], stream: bool) -> None:
-    """Run one turn and print the reply, with the wall-clock time it took."""
+def _send(
+    agent: CalorAIAgent, user_id: str, text: str, image: Optional[str], stream: bool
+) -> bool:
+    """Run one turn and print the reply. Returns False if the turn failed.
+
+    The caller uses the return value as the process exit status for one-shot
+    invocations, so a failed turn is scriptable rather than silently "successful".
+    """
     start = time.perf_counter()
+    ok = True
+    prefix_written = False
     try:
         if stream:
             print("calorai: ", end="", flush=True)
+            prefix_written = True
             printed = False
             for piece in agent.stream_chat(user_id, text, image_path=image):
                 print(piece, end="", flush=True)
@@ -91,8 +100,13 @@ def _send(agent: CalorAIAgent, user_id: str, text: str, image: Optional[str], st
         else:
             print(f"calorai: {agent.chat(user_id, text, image_path=image)}")
     except Exception as exc:  # noqa: BLE001 - a CLI should not traceback at users
-        print(f"calorai: something went wrong — {exc}")
+        # In streaming mode the "calorai: " prefix is already on the line, so
+        # finish that line instead of printing a second prefix.
+        print(f"something went wrong — {exc}" if prefix_written
+              else f"calorai: something went wrong — {exc}")
+        ok = False
     print(f"         [{time.perf_counter() - start:.2f}s]")
+    return ok
 
 
 def _handle_command(
@@ -147,8 +161,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     agent = CalorAIAgent()
 
     if args.image or args.message:
-        _send(agent, args.user, args.message or "", args.image, stream)
-        return 0
+        return 0 if _send(agent, args.user, args.message or "", args.image, stream) else 1
 
     print(BANNER)
     print(f"user: {args.user} | text: {settings.text_model} | vision: {settings.vision_model}")

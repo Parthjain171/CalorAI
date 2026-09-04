@@ -25,6 +25,46 @@ from src.utils.user_context import get_user_id
 
 MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack")
 
+# Sanity bounds on model-supplied numbers. A very large single meal is ~3000
+# kcal, so anything past 6000 is a typo or a parsing slip ("99999 rotis"), not
+# food. These are rejected rather than clamped: a clamped value is a wrong
+# number stored silently, whereas an error lets the agent ask what was meant.
+MAX_MEAL_CALORIES = 6000.0
+MAX_MACRO_GRAMS = 1500.0
+
+
+def _validate_macros(
+    calories: Optional[float],
+    protein: Optional[float],
+    carbs: Optional[float],
+    fat: Optional[float],
+) -> Optional[str]:
+    """Return an error message if the numbers are not plausible food, else None."""
+    checks = (
+        ("calories", calories, MAX_MEAL_CALORIES),
+        ("protein", protein, MAX_MACRO_GRAMS),
+        ("carbs", carbs, MAX_MACRO_GRAMS),
+        ("fat", fat, MAX_MACRO_GRAMS),
+    )
+    for name, value, ceiling in checks:
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return f"{name} must be a number, got {value!r}."
+        if number != number or number in (float("inf"), float("-inf")):
+            return f"{name} must be a real number, got {value!r}."
+        if number < 0:
+            return f"{name} cannot be negative (got {number:g})."
+        if number > ceiling:
+            return (
+                f"{number:g} {name} is not a plausible single meal (limit "
+                f"{ceiling:g}). Check the portion with the user before logging — "
+                "this usually means a quantity was misread."
+            )
+    return None
+
 
 def _summarize(meal: Dict[str, Any]) -> Dict[str, Any]:
     """Trim a meal row to the fields the model needs (keeps context small)."""
@@ -75,6 +115,10 @@ def log_meal(
     meal_type = meal_type.lower().strip()
     if meal_type not in MEAL_TYPES:
         meal_type = "snack"
+
+    error = _validate_macros(calories, protein, carbs, fat)
+    if error:
+        return {"error": error}
 
     meal = insert_meal(
         user_id=get_user_id(),
@@ -190,6 +234,10 @@ def update_meal(
         meal_type = meal_type.lower().strip()
         if meal_type not in MEAL_TYPES:
             meal_type = None
+
+    error = _validate_macros(calories, protein, carbs, fat)
+    if error:
+        return {"error": error}
 
     updated = update_meal_row(
         user_id=get_user_id(),

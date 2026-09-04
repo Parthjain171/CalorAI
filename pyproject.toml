@@ -21,3 +21,6 @@ calorai = "cli:main"
 
 [tool.setuptools]
 packages = ["src", "src.tools", "src.models", "src.db", "src.memory", "src.utils"]
+# cli.py is a top-level module, not part of a package. Without listing it here
+# the `calorai` console script installs but dies with ModuleNotFoundError.
+py-modules = ["cli"]
