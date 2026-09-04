@@ -444,6 +444,11 @@ budget was gone by turn three. Fixed in order of impact:
   ~1,970 tokens.
 - **Low reasoning effort** on reasoning models (`reasoning_effort=low`). Hidden
   thinking tokens were being spent on "which tool, with what arguments".
+- **Model clients warmed at startup.** Found last, by timing every graph node:
+  the first turn of every process carried 4 to 11 s that was in no model call.
+  It was the lazy import of the provider SDK and construction of the chat
+  client, inside the first turn's agent node. Clients are now built when the
+  agent is constructed. First turn went from 13.8 s to 2.9 s in the CLI.
 - **Image downscaling.** Photos are resized to 1,024 px and re-encoded as JPEG
   before upload: 596 KB -> 78 KB on the test photo.
 - **Batched nutrition lookups.** One tool call for every food in a message
