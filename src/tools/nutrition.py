@@ -205,20 +205,15 @@ class FoodQuery(BaseModel):
     food: str = Field(description="Food name, e.g. 'paratha', 'chicken biryani'.")
     servings: float = Field(
         default=1.0,
-        description=(
-            "How many standard servings. Use fractions for approximate portions: "
-            "'two thirds of the box' -> 0.67, 'half of this' -> 0.5, '2 rotis' -> 2."
-        ),
+        description="Standard servings; fractions for approximate portions: "
+        "'two thirds' -> 0.67, 'half' -> 0.5, '2 rotis' -> 2.",
     )
 
 
 @tool("lookup_nutrition")
 def lookup_nutrition(items: List[FoodQuery]) -> Dict[str, Any]:
-    """Get calories and macros for one or more foods, scaled to the portion eaten.
-
-    Always pass EVERY food from the message in a single call — this is batched
-    and one call is much faster than several. Returns per-item macros plus a
-    combined `total` you can pass straight to log_meal.
+    """Calories and macros for foods, scaled by servings. Pass EVERY food from the
+    message in ONE call; returns per-item macros plus a `total` for log_meal.
     """
     pairs = [(item.food, item.servings) for item in items]
     results = _resolve_many(pairs)

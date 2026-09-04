@@ -43,6 +43,7 @@ class Settings:
     latency_log: Path
     tz_offset_hours: float
     max_memories: int
+    max_history_tokens: int
     mock: bool
     usda_api_key: str
 
@@ -62,6 +63,9 @@ def _load() -> Settings:
         latency_log=_resolve(_env("CALORAI_LATENCY_LOG", "data/latency.jsonl")),
         tz_offset_hours=float(_env("CALORAI_TZ_OFFSET_HOURS", "5.5")),
         max_memories=int(_env("CALORAI_MAX_MEMORIES", "8")),
+        # Recent-history budget the model sees per call; the full thread stays
+        # in the checkpointer. Facts are in SQLite, so this can be small.
+        max_history_tokens=int(_env("CALORAI_MAX_HISTORY_TOKENS", "2000")),
         mock=_env("CALORAI_MOCK", "0") not in ("0", "false", "False"),
         # Off unless set. DEMO_KEY works but is capped at 10 requests/hour.
         usda_api_key=os.environ.get("USDA_API_KEY", "").strip(),

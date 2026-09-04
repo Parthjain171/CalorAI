@@ -94,23 +94,21 @@ def log_meal(
     source: str = "text",
     meal_date: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Log a NEW meal the user just ate. Call lookup_nutrition first for the macros.
+    """Log a NEW meal. Get macros from lookup_nutrition first.
 
-    Do NOT use this to fix a meal that is already logged — that is update_meal.
-    Combine everything the user described as one eating occasion into a single
-    call; a photo plus a caption about it is ONE meal, not two.
+    One eating occasion = one call (a photo plus its caption is ONE meal).
+    Never use this to fix an existing meal - that is update_meal.
 
     Args:
         meal_name: Short label, e.g. "2 parathas and chai".
         calories: Total kcal for the whole meal.
-        protein: Total protein in grams.
-        carbs: Total carbohydrate in grams.
-        fat: Total fat in grams.
-        description: Portion detail worth remembering, e.g. "~2/3 of the box".
-        meal_type: One of breakfast, lunch, dinner, snack.
-        source: "text", "vision", or "vision+text" if a photo was involved.
-        meal_date: Local YYYY-MM-DD. Omit for today; use it when re-logging an
-            earlier day's meals.
+        protein: Grams.
+        carbs: Grams.
+        fat: Grams.
+        description: Portion detail, e.g. "~2/3 of the box".
+        meal_type: breakfast, lunch, dinner or snack.
+        source: "text", "vision" or "vision+text".
+        meal_date: Local YYYY-MM-DD; omit for today.
     """
     meal_type = meal_type.lower().strip()
     if meal_type not in MEAL_TYPES:
@@ -158,18 +156,15 @@ def get_meals(
     name_contains: Optional[str] = None,
     limit: int = 20,
 ) -> Dict[str, Any]:
-    """Retrieve previously logged meals, newest first.
-
-    Use this to answer "what did I eat", to find the meal a correction refers to
-    (pass name_contains, e.g. "roti"), and to replay a past day for requests like
-    "same as yesterday".
+    """Retrieve logged meals, newest first. Use name_contains to find the meal a
+    correction refers to; period="yesterday" for "same as yesterday".
 
     Args:
-        period: "today", "yesterday", "week" (last 7 days), or "all".
-        start_date: Local YYYY-MM-DD; overrides period when given.
-        end_date: Local YYYY-MM-DD; overrides period when given.
-        name_contains: Only meals whose name or description contains this text.
-        limit: Max rows to return.
+        period: "today", "yesterday", "week" or "all".
+        start_date: Local YYYY-MM-DD; overrides period.
+        end_date: Local YYYY-MM-DD; overrides period.
+        name_contains: Text in name or description, e.g. "roti".
+        limit: Max rows.
     """
     if start_date or end_date:
         window_start, window_end = start_date, end_date
@@ -211,24 +206,21 @@ def update_meal(
     description: Optional[str] = None,
     meal_type: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Correct a meal that is ALREADY logged. Edits the row in place.
+    """Correct a meal that is ALREADY logged; edits the row in place.
 
-    This is the tool for "actually that was 3 rotis not 2", "make it a large",
-    "that was only half". Find the meal first with get_meals (name_contains is
-    the quickest way), re-price the corrected amount with lookup_nutrition, then
-    call this with the NEW TOTAL values for the whole meal — not the difference.
-
-    Never use log_meal to fix an existing meal; that double-counts the day.
+    For "actually that was 3 rotis not 2": find it with get_meals, re-price the
+    whole corrected meal with lookup_nutrition, then pass NEW TOTAL values here.
+    Never log_meal a fix - that double-counts the day.
 
     Args:
-        meal_id: The id from get_meals. Required.
+        meal_id: From get_meals.
         meal_name: Corrected label, e.g. "3 rotis".
-        calories: New TOTAL kcal for the meal (replaces, does not add).
-        protein: New total protein in grams.
-        carbs: New total carbohydrate in grams.
-        fat: New total fat in grams.
+        calories: New TOTAL kcal (replaces, does not add).
+        protein: New total grams.
+        carbs: New total grams.
+        fat: New total grams.
         description: Corrected portion detail.
-        meal_type: Corrected breakfast/lunch/dinner/snack.
+        meal_type: breakfast, lunch, dinner or snack.
     """
     if meal_type:
         meal_type = meal_type.lower().strip()
@@ -262,13 +254,10 @@ def update_meal(
 
 @tool("delete_meal")
 def delete_meal(meal_id: int) -> Dict[str, Any]:
-    """Remove a logged meal entirely — "delete that", "I didn't actually eat it".
-
-    For fixing amounts use update_meal instead; deleting and re-logging loses
-    the original time the meal was recorded.
+    """Remove a logged meal entirely ("delete that"). For amount fixes use update_meal.
 
     Args:
-        meal_id: The id from get_meals.
+        meal_id: From get_meals.
     """
     user_id = get_user_id()
     meal = get_meal(user_id, int(meal_id))

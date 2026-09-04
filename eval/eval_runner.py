@@ -30,8 +30,14 @@ from src.utils.config import settings  # noqa: E402
 GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
 
 
-def _run_case(agent: Any, case: Case, verbose: bool) -> Dict[str, Any]:
-    """Run one case end to end and return its result record."""
+def _run_case(agent: Any, case: Case, verbose: bool, pace: float = 0.0) -> Dict[str, Any]:
+    """Run one case end to end and return its result record.
+
+    ``pace`` sleeps that many seconds before each turn. Free API tiers meter
+    tokens per minute; without pacing, a multi-call turn arriving right after
+    another one is throttled and the SDK's backoff wait gets recorded as model
+    latency. Pacing measures inference; running unpaced measures the tier.
+    """
     user_id = f"eval_{case.id}_{uuid.uuid4().hex[:6]}"
     started = time.perf_counter()
     replies: List[str] = []
@@ -41,6 +47,8 @@ def _run_case(agent: Any, case: Case, verbose: bool) -> Dict[str, Any]:
         if case.setup:
             context = case.setup(agent, user_id) or {}
         for turn in case.turns:
+            if pace > 0:
+                time.sleep(pace)
             reply = agent.chat(user_id, turn.text, image_path=turn.image)
             replies.append(reply)
             if verbose:
@@ -72,6 +80,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--repeat", type=int, default=1, help="repeat for more latency samples")
     parser.add_argument("--verbose", "-v", action="store_true", help="print every turn")
     parser.add_argument("--keep-db", action="store_true", help="do not wipe the database first")
+    parser.add_argument(
+        "--pace", type=float, default=0.0,
+        help="seconds to sleep before each turn (stay under a free tier's tokens/minute)",
+    )
     args = parser.parse_args(argv)
 
     selected = CASES
@@ -106,7 +118,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.repeat > 1:
             print(f"{DIM}--- pass {iteration + 1}/{args.repeat} ---{RESET}")
         for case in selected:
-            result = _run_case(agent, case, args.verbose)
+            result = _run_case(agent, case, args.verbose, pace=args.pace)
             results.append(result)
             mark = f"{GREEN}PASS{RESET}" if result["passed"] else f"{RED}FAIL{RESET}"
             print(f"  {mark}  {case.id:<32} {result['seconds']:>6.2f}s  {case.description}")

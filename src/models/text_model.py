@@ -86,6 +86,12 @@ def _build(model_id: str, temperature: float, max_tokens: int) -> BaseChatModel:
 
     # base_url lets one client cover every OpenAI-compatible host.
     base_url = os.environ.get("OPENAI_BASE_URL") or None
+    # Reasoning models spend hidden tokens thinking before every tool call.
+    # For "which tool, with what arguments" that is wasted budget and latency,
+    # so default to low effort; override with MODEL_REASONING_EFFORT.
+    extra: dict[str, Any] = {}
+    if "gpt-oss" in model_id.lower() or model_id.lower().startswith(("o1", "o3", "o4")):
+        extra["reasoning_effort"] = os.environ.get("MODEL_REASONING_EFFORT", "low")
     return ChatOpenAI(
         model=model_id,
         temperature=temperature,
@@ -93,6 +99,7 @@ def _build(model_id: str, temperature: float, max_tokens: int) -> BaseChatModel:
         timeout=30,
         max_retries=2,
         base_url=base_url,
+        **extra,
         # Local runtimes (Ollama, LM Studio) ignore the key but the client
         # still requires one to be present.
         api_key=os.environ.get("OPENAI_API_KEY") or ("not-needed" if base_url else None),

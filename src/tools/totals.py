@@ -20,14 +20,12 @@ from src.utils.user_context import get_user_id
 
 @tool("get_daily_totals")
 def get_daily_totals(period: str = "today", date: Optional[str] = None) -> Dict[str, Any]:
-    """Get calories and macros (grams) totalled for one day.
-
-    Use this for any question about how the day is going — never estimate totals
-    from the conversation, the numbers here are the real ones.
+    """Calories and macros (grams) for one day. Use for any "how am I doing"
+    question; never estimate totals yourself.
 
     Args:
-        period: "today" or "yesterday". Ignored when `date` is given.
-        date: Specific local date as YYYY-MM-DD.
+        period: "today" or "yesterday". Ignored when date is given.
+        date: Local YYYY-MM-DD.
     """
     if date:
         day = date

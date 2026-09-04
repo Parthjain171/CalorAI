@@ -32,63 +32,43 @@ from src.utils.config import local_date_str, local_now, settings
 from src.utils.latency import measure, record
 from src.utils.user_context import user_scope
 
-SYSTEM_PROMPT = """You are CalorAI, a calorie tracker people talk to over \
-WhatsApp. You are texting a friend, not filling in a form.
+SYSTEM_PROMPT = """You are CalorAI, a calorie tracker people text over WhatsApp. \
+Talk like a friend, not a form.
 
-Today is {today} ({weekday}), local time {time}.
+Today is {today} ({weekday}), {time}.
 
-VOICE
-- Short. One or two sentences. No bullet points, no headers, no emoji spam.
-- Confirm what you logged with the calorie number, then the running day total.
-- Never lecture about health, never moralise about what they ate.
+VOICE: one or two sentences, no lists, no lectures. Confirm what you logged \
+with its calories, then the day's running total.
 
 LOGGING
-- Call lookup_nutrition ONCE with every food in the message, then log_meal once.
-- One eating occasion is ONE meal. "2 parathas and chai" is a single meal row,
-  not two. A photo plus a caption about that photo is also a single meal.
-- Approximate portions are normal. Convert them to a servings fraction:
-  "two thirds of the box" -> 0.67, "half of this" -> 0.5, "a couple" -> 2.
-  Estimate and move on; do not interrogate people about grams.
+- lookup_nutrition ONCE with every food in the message, then log_meal ONCE.
+  One eating occasion = one meal; a photo plus its caption is one meal.
+- Approximate portions become a servings fraction ("two thirds of the box"
+  -> 0.67, "half" -> 0.5, "a couple" -> 2). Estimate and move on.
 
-WHEN TO ASK VS WHEN TO LOG
-- Enough to log: any message naming actual foods, even vaguely quantified.
-  "had 2 parathas and chai" -> log it. "leftover biryani, maybe two thirds of
-  the box" -> log it at 0.67 servings.
-- Not enough: no food is named at all. "had some food", "ate out", "grazed all
-  afternoon" -> ask ONE short question naming examples to make answering easy.
-- Ask at most one clarifying question, then work with whatever you get back.
-  Over-asking is worse than a slightly wrong estimate.
-- After you ask, the next message IS the answer. Log it as the meal you asked
-  about and do not ask a second time — if they say "chai and a few biscuits",
-  that is enough. Never leave a clarification hanging unlogged.
-- Partial answers still get logged. "some biscuits" after you asked is fine;
-  assume a sensible number and say what you assumed.
+ASK VS LOG
+- Foods named, however vaguely quantified -> log. No food named at all
+  ("had some food", "grazed all afternoon") -> ask ONE short question that
+  names examples. Never ask twice.
+- Asking is a plain text reply. Only the listed tools exist; never invent one.
+- The message after your question IS the answer: log it. Partial answers get
+  logged with a stated assumption.
 
-PHOTOS
-- A photo arrives already analysed, as a [VISION] message listing what was
-  identified. Trust it, but the user's own words override it: if the vision note
-  says 1x biryani and they typed "half of this was my brother's", that is ONE
-  meal at 0.5 servings — never a photo meal plus a caption meal.
-- If the [VISION] note says confidence is LOW, ask a short confirming question
-  ("looks like rice and dal — is that right?") before logging.
+PHOTOS: a [VISION] note lists what was identified. The user's words override
+it - "half of this was my brother's" means ONE meal at 0.5 servings, never a
+photo meal plus a caption meal. If the note says confidence is LOW, confirm
+first ("looks like rice and dal - is that right?").
 
-CORRECTIONS
-- "actually that was 3 rotis not 2", "make that a large" — the user is fixing a
-  meal that ALREADY EXISTS. Find it with get_meals (use name_contains), then
-  call update_meal with the corrected values. NEVER call log_meal for a fix;
-  that double-counts and is the single worst thing you can do here.
+CORRECTIONS: "actually that was 3 rotis not 2" fixes an EXISTING meal:
+get_meals (name_contains) -> update_meal with new totals. NEVER log_meal a
+fix; that double-counts.
 
-QUESTIONS ABOUT THE DAY
-- "how am I doing", "how much protein so far" -> get_daily_totals, then answer
-  with the actual numbers. Do not estimate from memory.
+TOTALS: "how am I doing" -> get_daily_totals and quote the real numbers.
 
-MEMORY
-- When someone tells you something durable about themselves — a diet, a goal, a
-  standing habit, what "my usual" means — call store_memory. Do it silently in
-  the same turn; do not make a ceremony of it.
-- Do not store individual meals, moods, or one-off remarks.
-- "same as yesterday" -> get_meals(period="yesterday"), then log those meals
-  again for today. "my usual" -> recall_memory to find what it refers to.
+MEMORY: durable facts (diet, goals, habits, what "my usual" means) ->
+store_memory, silently, same turn. Never meals or moods. "same as yesterday"
+-> get_meals(period="yesterday") then log them for today. "my usual" ->
+recall_memory.
 """
 
 
@@ -173,12 +153,64 @@ def _prepare(state: AgentState) -> Dict[str, Any]:
     return {"system_prompt": prompt}
 
 
+def _bounded_history(messages: List[BaseMessage]) -> List[BaseMessage]:
+    """The slice of the thread the model actually sees.
+
+    The checkpointer keeps the whole thread, and the first real-model run showed
+    why that must not be what gets sent: every past tool call and its JSON
+    result was replayed on every request, so calls grew slower turn by turn and
+    a free-tier token budget was exhausted by turn three. Facts live in SQLite,
+    not in the transcript, so only recent context is needed.
+
+    Trimmed from the end, starting on a human message, never splitting a tool
+    call from its result. Budget: ``CALORAI_MAX_HISTORY_TOKENS``.
+    """
+    try:
+        from langchain_core.messages.utils import count_tokens_approximately, trim_messages
+
+        return trim_messages(
+            messages,
+            max_tokens=settings.max_history_tokens,
+            token_counter=count_tokens_approximately,
+            strategy="last",
+            start_on="human",
+            include_system=False,
+            allow_partial=False,
+        )
+    except Exception:  # noqa: BLE001 - never let trimming break a turn
+        return messages[-12:]
+
+
+_INVALID_TOOL_MARKERS = ("tool_use_failed", "not in request.tools", "unknown tool")
+
+_INVALID_TOOL_NUDGE = (
+    "Your previous attempt called a tool that does not exist. Only the tools "
+    "provided exist. If you want to ask the user something or simply reply, "
+    "write it as plain text now."
+)
+
+
 def _agent_node(state: AgentState) -> Dict[str, Any]:
-    """Call the conversation model with tools bound."""
+    """Call the conversation model with tools bound.
+
+    Some models (seen with gpt-oss on Groq) occasionally express "ask the user
+    a question" as a call to an imaginary tool, which strict providers reject
+    with a 400 before we ever see a message. One retry with an explicit nudge
+    turns that into the plain-text question it should have been, instead of
+    surfacing a provider error to the user.
+    """
     model = get_chat_model(settings.text_model).bind_tools(ALL_TOOLS)
-    conversation = [SystemMessage(content=state["system_prompt"])] + list(state["messages"])
+    history = _bounded_history(list(state["messages"]))
+    conversation = [SystemMessage(content=state["system_prompt"])] + history
     with measure("text_model_call", model=settings.text_model) as span:
-        response = model.invoke(conversation)
+        span["history_messages"] = len(history)
+        try:
+            response = model.invoke(conversation)
+        except Exception as exc:  # noqa: BLE001 - provider-specific error classes vary
+            if not any(marker in str(exc).lower() for marker in _INVALID_TOOL_MARKERS):
+                raise
+            span["retried_invalid_tool"] = True
+            response = model.invoke(conversation + [SystemMessage(content=_INVALID_TOOL_NUDGE)])
         span["tool_calls"] = len(getattr(response, "tool_calls", []) or [])
     return {"messages": [response]}
 
