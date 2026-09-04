@@ -86,6 +86,7 @@ def _estimate_with_llm(foods: List[str]) -> Dict[str, Dict[str, float]]:
         return {}
     try:
         from src.models.text_model import get_chat_model
+        from src.utils.latency import measure
 
         model = get_chat_model(settings.nutrition_model, temperature=0, max_tokens=600)
         prompt = (
@@ -96,7 +97,8 @@ def _estimate_with_llm(foods: List[str]) -> Dict[str, Dict[str, float]]:
             '"carbs": 0, "fat": 0}}\n\n'
             "Foods: " + ", ".join(foods)
         )
-        raw = model.invoke(prompt).content
+        with measure("nutrition_llm", misses=len(foods)):
+            raw = model.invoke(prompt).content
         if isinstance(raw, list):  # Anthropic returns a content-block list
             raw = "".join(part.get("text", "") for part in raw if isinstance(part, dict))
         match = re.search(r"\{.*\}", str(raw), re.S)

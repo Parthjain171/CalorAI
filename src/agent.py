@@ -15,7 +15,8 @@ lives in SQLite, not in the message log.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Optional, TypedDict
+import time
+from typing import Annotated, Any, Dict, Iterator, List, Optional, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -28,6 +29,7 @@ from src.models.text_model import get_chat_model
 from src.models.vision_model import analyze_image, format_vision_note
 from src.tools import ALL_TOOLS
 from src.utils.config import local_date_str, local_now, settings
+from src.utils.latency import measure, record
 from src.utils.user_context import user_scope
 
 SYSTEM_PROMPT = """You are CalorAI, a calorie tracker people talk to over \
@@ -139,7 +141,9 @@ def _vision(state: AgentState) -> Dict[str, Any]:
         return {}
 
     caption = _latest_user_text(state["messages"])
-    note = format_vision_note(analyze_image(image_path, caption=caption))
+    with measure("vision_model", model=settings.vision_model):
+        analysis = analyze_image(image_path, caption=caption)
+    note = format_vision_note(analysis)
 
     # Merge the note INTO the user's own message rather than appending a new
     # one. A separate message would become the "latest user message", hiding the
@@ -173,7 +177,10 @@ def _agent_node(state: AgentState) -> Dict[str, Any]:
     """Call the conversation model with tools bound."""
     model = get_chat_model(settings.text_model).bind_tools(ALL_TOOLS)
     conversation = [SystemMessage(content=state["system_prompt"])] + list(state["messages"])
-    return {"messages": [model.invoke(conversation)]}
+    with measure("text_model_call", model=settings.text_model) as span:
+        response = model.invoke(conversation)
+        span["tool_calls"] = len(getattr(response, "tool_calls", []) or [])
+    return {"messages": [response]}
 
 
 def build_graph(checkpointer: Optional[Any] = None) -> Any:
@@ -204,7 +211,8 @@ class CalorAIAgent:
         self, user_id: str, message: str, image_path: Optional[str] = None
     ) -> str:
         """Run one turn and return the assistant's reply text."""
-        with user_scope(user_id):
+        label = "turn_image" if image_path else "turn_text"
+        with user_scope(user_id), measure(label, user=user_id):
             result = self.graph.invoke(
                 {
                     "messages": [HumanMessage(content=message)],
@@ -223,3 +231,42 @@ class CalorAIAgent:
                     ).strip()
                 return str(content).strip()
         return ""
+
+    def stream_chat(
+        self, user_id: str, message: str, image_path: Optional[str] = None
+    ) -> Iterator[str]:
+        """Run one turn, yielding reply text as it is generated.
+
+        Tool-calling rounds produce no visible text, so only the final answer
+        surfaces. Streaming does not make a turn faster, but it cuts the time
+        until the user sees *something* — which is the latency they feel.
+        """
+        label = "turn_image" if image_path else "turn_text"
+        first_token_at: Optional[float] = None
+        start = time.perf_counter()
+
+        with user_scope(user_id), measure(label, user=user_id, streamed=True) as span:
+            for chunk, meta in self.graph.stream(
+                {
+                    "messages": [HumanMessage(content=message)],
+                    "user_id": user_id,
+                    "image_path": image_path,
+                    "system_prompt": "",
+                },
+                config={"configurable": {"thread_id": user_id}, "recursion_limit": 25},
+                stream_mode="messages",
+            ):
+                if meta.get("langgraph_node") != "agent":
+                    continue
+                content = getattr(chunk, "content", "")
+                if isinstance(content, list):
+                    content = "".join(
+                        part.get("text", "") for part in content if isinstance(part, dict)
+                    )
+                if not content:
+                    continue
+                if first_token_at is None:
+                    first_token_at = time.perf_counter()
+                    record("time_to_first_token", first_token_at - start, user=user_id)
+                    span["ttft"] = round(first_token_at - start, 3)
+                yield str(content)
