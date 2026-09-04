@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 venv/
 .env
-data/*.db
+data/*.db*
 data/*.jsonl
 .pytest_cache/
 .DS_Store
