@@ -23,6 +23,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from src.memory.manager import format_for_prompt, recall
 from src.models.text_model import get_chat_model
 from src.tools import ALL_TOOLS
 from src.utils.config import local_date_str, local_now, settings
@@ -64,15 +65,31 @@ CORRECTIONS
 QUESTIONS ABOUT THE DAY
 - "how am I doing", "how much protein so far" -> get_daily_totals, then answer
   with the actual numbers. Do not estimate from memory.
+
+MEMORY
+- When someone tells you something durable about themselves — a diet, a goal, a
+  standing habit, what "my usual" means — call store_memory. Do it silently in
+  the same turn; do not make a ceremony of it.
+- Do not store individual meals, moods, or one-off remarks.
+- "same as yesterday" -> get_meals(period="yesterday"), then log those meals
+  again for today. "my usual" -> recall_memory to find what it refers to.
 """
 
 
 class AgentState(TypedDict):
-    """State carried through one turn of the graph."""
+    """State carried through one turn of the graph.
+
+    ``system_prompt`` is held as a plain string rather than a message in
+    ``messages``. The ``add_messages`` reducer appends, so a freshly built
+    SystemMessage would stack up a new copy on every turn inside the
+    checkpointer; keeping it out of the message list means it is rebuilt each
+    turn and prepended once at call time.
+    """
 
     messages: Annotated[List[BaseMessage], add_messages]
     user_id: str
     image_path: Optional[str]
+    system_prompt: str
 
 
 def _system_prompt() -> str:
@@ -84,17 +101,37 @@ def _system_prompt() -> str:
     )
 
 
+def _latest_user_text(messages: List[BaseMessage]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            content = message.content
+            if isinstance(content, list):
+                return " ".join(
+                    part.get("text", "") for part in content if isinstance(part, dict)
+                )
+            return str(content)
+    return ""
+
+
 def _prepare(state: AgentState) -> Dict[str, Any]:
-    """Refresh the system prompt for this turn."""
-    prompt = SystemMessage(content=_system_prompt())
-    history = [m for m in state["messages"] if not isinstance(m, SystemMessage)]
-    return {"messages": [prompt] + history}
+    """Rebuild the system prompt for this turn, with relevant memories injected.
+
+    Memory is selected per turn against the incoming message rather than dumped
+    wholesale — see :mod:`src.memory.manager` for the tiering and the cap.
+    """
+    memories = recall(state["user_id"], _latest_user_text(state["messages"]))
+    prompt = _system_prompt()
+    memory_block = format_for_prompt(memories)
+    if memory_block:
+        prompt = f"{prompt}\n{memory_block}\n"
+    return {"system_prompt": prompt}
 
 
 def _agent_node(state: AgentState) -> Dict[str, Any]:
     """Call the conversation model with tools bound."""
     model = get_chat_model(settings.text_model).bind_tools(ALL_TOOLS)
-    return {"messages": [model.invoke(state["messages"])]}
+    conversation = [SystemMessage(content=state["system_prompt"])] + list(state["messages"])
+    return {"messages": [model.invoke(conversation)]}
 
 
 def build_graph(checkpointer: Optional[Any] = None) -> Any:
@@ -128,6 +165,7 @@ class CalorAIAgent:
                     "messages": [HumanMessage(content=message)],
                     "user_id": user_id,
                     "image_path": image_path,
+                    "system_prompt": "",
                 },
                 config={"configurable": {"thread_id": user_id}, "recursion_limit": 25},
             )
