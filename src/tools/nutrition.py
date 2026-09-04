@@ -109,9 +109,84 @@ def _estimate_with_llm(foods: List[str]) -> Dict[str, Dict[str, float]]:
         return {}
 
 
+_CONJUNCTION = re.compile(r"\s*(?:,|&|\+|\band\b|\bwith\b)\s*", re.I)
+_LEADING_QTY = re.compile(
+    r"^\s*(\d+(?:\.\d+)?|a|an|one|two|three|four|five|six|half|couple)\b\s*(.*)$", re.I
+)
+_QTY_WORDS = {
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "half": 0.5, "couple": 2,
+}
+
+
+def _leading_quantity(text: str) -> Tuple[float, str]:
+    """Split "2 idli" into ``(2.0, "idli")``; no quantity means 1."""
+    match = _LEADING_QTY.match(text)
+    if not match:
+        return 1.0, text.strip()
+    raw, rest = match.group(1).lower(), match.group(2)
+    return (_QTY_WORDS.get(raw) or float(raw)), rest.strip()
+
+
+def _expand(food: str, servings: float) -> List[Tuple[str, float]]:
+    """Break a compound mention into its foods, each carrying its own quantity.
+
+    Models sometimes pass "2 idli and sambar" as one item. Matched as one
+    string it would silently resolve to whichever component the seed table
+    knows best - the first real-model run priced exactly that as a lone bowl
+    of sambar. Splitting on conjunctions and summing the parts is what the
+    user actually meant.
+    """
+    if not _CONJUNCTION.search(food):
+        return [(food, servings)]
+    parts: List[Tuple[str, float]] = []
+    for piece in _CONJUNCTION.split(food):
+        piece = piece.strip()
+        if not piece:
+            continue
+        qty, name = _leading_quantity(piece)
+        if name:
+            parts.append((name, qty * servings))
+    return parts or [(food, servings)]
+
+
+def resolve_items(items: List[Tuple[str, float]]) -> List[Dict[str, Any]]:
+    """Resolve each ``(food, servings)`` to macros, expanding compound mentions.
+
+    One result per input item. A compound item's parts are resolved
+    individually and summed, so the caller's shape is unchanged.
+    """
+    expanded: List[Tuple[str, float]] = []
+    owners: List[int] = []
+    for index, (food, servings) in enumerate(items):
+        for part in _expand(food, servings):
+            expanded.append(part)
+            owners.append(index)
+
+    parts = _resolve_many(expanded)
+    output: List[Optional[Dict[str, Any]]] = [None] * len(items)
+    for owner, part in zip(owners, parts):
+        current = output[owner]
+        if current is None:
+            food, servings = items[owner]
+            output[owner] = {
+                **part, "food": food, "servings": round(float(servings), 2),
+                "matched_as": part["matched_as"], "serving_size": part["serving_size"],
+                "source": part["source"],
+            }
+            continue
+        for macro in ("calories", "protein", "carbs", "fat"):
+            current[macro] = round(current[macro] + part[macro], 1)
+        current["matched_as"] += f" + {part['matched_as']}"
+        current["serving_size"] += f"; {part['serving_size']}"
+        if part["source"] not in current["source"]:
+            current["source"] += f"+{part['source']}"
+    return [row for row in output if row is not None]
+
+
 def resolve_nutrition(food: str, servings: float = 1.0) -> Dict[str, Any]:
     """Resolve one food to macros, scaled by ``servings``. Used by tools and tests."""
-    return _resolve_many([(food, servings)])[0]
+    return resolve_items([(food, servings)])[0]
 
 
 def _resolve_many(items: List[Tuple[str, float]]) -> List[Dict[str, Any]]:
@@ -215,8 +290,7 @@ def lookup_nutrition(items: List[FoodQuery]) -> Dict[str, Any]:
     """Calories and macros for foods, scaled by servings. Pass EVERY food from the
     message in ONE call; returns per-item macros plus a `total` for log_meal.
     """
-    pairs = [(item.food, item.servings) for item in items]
-    results = _resolve_many(pairs)
+    results = resolve_items([(item.food, item.servings) for item in items])
     total = {
         macro: round(sum(r[macro] for r in results), 1)
         for macro in ("calories", "protein", "carbs", "fat")

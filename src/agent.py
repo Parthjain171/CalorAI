@@ -67,7 +67,8 @@ TOTALS: "how am I doing" -> get_daily_totals and quote the real numbers.
 
 MEMORY: durable facts (diet, goals, habits, what "my usual" means) ->
 store_memory, silently, same turn. Never meals or moods. "same as yesterday"
--> get_meals(period="yesterday") then log them for today. "my usual" ->
+-> get_meals(period="yesterday"), then log_meal each returned meal with its
+STORED calories and macros (no lookup needed), then reply. "my usual" ->
 recall_memory.
 """
 
@@ -189,6 +190,21 @@ _INVALID_TOOL_NUDGE = (
     "write it as plain text now."
 )
 
+_EMPTY_REPLY_NUDGE = (
+    "You stopped without replying. Finish the task: if a meal still needs "
+    "logging, call log_meal; otherwise answer the user in one or two sentences."
+)
+
+
+def _is_empty(response: Any) -> bool:
+    """True when the model returned neither a tool call nor any text."""
+    if getattr(response, "tool_calls", None):
+        return False
+    content = response.content
+    if isinstance(content, list):
+        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+    return not str(content).strip()
+
 
 def _agent_node(state: AgentState) -> Dict[str, Any]:
     """Call the conversation model with tools bound.
@@ -211,6 +227,12 @@ def _agent_node(state: AgentState) -> Dict[str, Any]:
                 raise
             span["retried_invalid_tool"] = True
             response = model.invoke(conversation + [SystemMessage(content=_INVALID_TOOL_NUDGE)])
+        # Seen with gpt-oss mid-way through "same as yesterday": a stop with no
+        # text and no tool call, leaving a meal unlogged and the user with
+        # silence. One nudge finishes the job.
+        if _is_empty(response):
+            span["retried_empty_reply"] = True
+            response = model.invoke(conversation + [SystemMessage(content=_EMPTY_REPLY_NUDGE)])
         span["tool_calls"] = len(getattr(response, "tool_calls", []) or [])
     return {"messages": [response]}
 

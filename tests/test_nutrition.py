@@ -32,6 +32,21 @@ def test_fractional_portion():
     assert resolve_nutrition("biryani", 0.5)["calories"] == resolve_nutrition("biryani", 1)["calories"] / 2
 
 
+def test_compound_mention_is_split_and_summed():
+    # A real model passed "2 idli and sambar" as ONE item; it must not resolve
+    # to a lone bowl of sambar.
+    hit = resolve_nutrition("2 idli and sambar", 1)
+    assert hit["calories"] == 2 * 58 + 110
+    assert "idli" in hit["matched_as"] and "sambar" in hit["matched_as"]
+    assert resolve_nutrition("2 idli and sambar", 0.5)["calories"] == (2 * 58 + 110) / 2
+    assert resolve_nutrition("roti, dal and rice", 1)["calories"] == 110 + 150 + 205
+
+
+def test_dish_names_are_not_split():
+    assert resolve_nutrition("rajma chawal", 1)["calories"] == 415
+    assert resolve_nutrition("chicken biryani", 1)["matched_as"] == "chicken biryani"
+
+
 def test_batched_tool_returns_total():
     out = lookup_nutrition.invoke({"items": [
         {"food": "paratha", "servings": 2}, {"food": "chai", "servings": 1},
