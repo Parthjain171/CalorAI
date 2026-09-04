@@ -1,8 +1,26 @@
 # CalorAI Agent
 
+[![CI](https://github.com/Parthjain171/CalorAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Parthjain171/CalorAI/actions/workflows/ci.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/agent-LangGraph-1C3C3C)
+![SQLite](https://img.shields.io/badge/storage-SQLite-003B57?logo=sqlite&logoColor=white)
+![Eval](https://img.shields.io/badge/eval-11%2F11%20live%20model-2E7A57)
+![Latency](https://img.shields.io/badge/text%20turn%20p50-1.77s-2E7A57)
+
 A conversational meal logger you talk to like a friend. Text what you ate, send a
 photo of your plate, correct yourself halfway through - it keeps an accurate
 running total of your day. No forms, no dropdowns.
+
+| At a glance | |
+|---|---|
+| **Agent** | LangGraph, 8 tools, one tool per state transition |
+| **Models** | Two on purpose: `gpt-oss-20b` for conversation and tool calling, `qwen3.8-27b` for photos (Groq free tier; Gemini, Anthropic, OpenAI one env change away) |
+| **Storage** | SQLite: meals, memories, nutrition cache, and a `daily_totals` view so totals can never drift |
+| **Memory** | Tiered durable facts, keyed upsert, hard cap of 8 per prompt. Not chat history. |
+| **Correctness** | All 11 required conversations pass against a live model, asserted on the database |
+| **Latency** | Text turn p50 1.77 s, image turn 4.4 s warm, measured and attributed |
+| **Testing** | 38 unit tests, an 11 case eval, a sabotage check proving the eval can fail, CI on every push |
+| **Run it** | `pip install -r requirements.txt`, put a free Groq key in `.env`, `python cli.py` |
 
 ```
 you: had 2 parathas and chai for breakfast
@@ -53,8 +71,8 @@ into the prompt each turn.
 ## Setup / Installation
 
 ```bash
-git clone https://github.com/Parthjain171/calorai-agent.git
-cd calorai-agent
+git clone https://github.com/Parthjain171/CalorAI.git
+cd CalorAI
 
 python -m venv .venv
 source .venv/bin/activate         # Windows: .venv\Scripts\activate
