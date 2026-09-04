@@ -212,6 +212,13 @@ resolves to one meal at 0.5 servings rather than a photo meal and a caption meal
 Low confidence is passed through rather than hidden, so the agent asks "looks
 like rice and dal — is that right?" instead of guessing.
 
+**When the vision model is confidently wrong** — it says quinoa and it was rice —
+nothing is hidden: the reply names what was logged and its calories, so the
+user sees the mistake immediately, and the fix is the ordinary correction path
+("that was rice, not quinoa" → `update_meal`), which never double-counts. The
+user's own words also always outrank the model's: a caption is read *together*
+with the vision note, not after it.
+
 ---
 
 ## Memory Design
@@ -674,6 +681,17 @@ Approximate effort across the build, in the order it was done:
 The single largest unplanned cost was the concurrency bug — it only appeared
 under repeated runs, which is precisely the argument for running an eval more
 than once.
+
+**Why this ran over the 8-hour budget.** The six core features, eval, and README
+were done at ~8.3 h. The remaining ~4 h went to three things I chose not to skip:
+an audit from a clean clone that found seven defects (one silently corrupted
+daily totals); working around the fact that neither Anthropic nor OpenAI has a
+free API tier, which meant adding Gemini and OpenAI-compatible providers and
+then discovering Google had blocked the account; and running every case against
+a live model, which found four more bugs the scripted double could not. Stopping
+at 8 h would have meant submitting an agent that had never made a real tool
+call. I'd make the same call again, but it is an overrun and it is recorded as
+one.
 
 ---
 
