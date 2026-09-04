@@ -129,6 +129,7 @@ def _handle_command(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    """Entry point: run the REPL, or a one-shot message/image, or a report."""
     parser = argparse.ArgumentParser(description="CalorAI conversational meal logger")
     parser.add_argument("--user", default="default", help="user id (isolates meal logs)")
     parser.add_argument("--image", help="send one photo, print the reply, exit")

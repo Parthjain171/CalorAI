@@ -67,6 +67,7 @@ SABOTAGES: List[Tuple[str, str, Callable[..., Any], str]] = [
 
 
 def main() -> int:
+    """Apply each sabotage in turn; return 0 only if the eval caught them all."""
     missed: List[str] = []
     for description, attribute, replacement, case_id in SABOTAGES:
         original = getattr(ScriptedChatModel, attribute)

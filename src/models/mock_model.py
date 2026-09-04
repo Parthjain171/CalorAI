@@ -112,6 +112,7 @@ class ScriptedChatModel(BaseChatModel):
         return "calorai-scripted-mock"
 
     def bind_tools(self, tools: Sequence[Any], **_: Any) -> "ScriptedChatModel":
+        """Mirror the real bind_tools contract, returning a configured copy."""
         clone = ScriptedChatModel()
         clone.tool_names = [getattr(t, "name", str(t)) for t in tools]
         return clone

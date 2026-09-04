@@ -46,6 +46,7 @@ class Settings:
 
     @property
     def tz(self) -> timezone:
+        """The user's timezone, used to decide which day a meal belongs to."""
         return timezone(timedelta(hours=self.tz_offset_hours))
 
 
@@ -84,6 +85,7 @@ def utc_now_iso() -> str:
 
 
 def local_now() -> datetime:
+    """Current time in the user's local timezone."""
     return datetime.now(settings.tz)
 
 

@@ -26,6 +26,7 @@ raw = zlib.compress(b"".join(rows), 9)
 
 
 def chunk(tag: bytes, data: bytes) -> bytes:
+    """Wrap PNG chunk data with its length, tag and CRC."""
     return (struct.pack(">I", len(data)) + tag + data
             + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
 

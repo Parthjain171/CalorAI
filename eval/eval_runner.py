@@ -66,6 +66,7 @@ def _run_case(agent: Any, case: Case, verbose: bool) -> Dict[str, Any]:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    """Run the selected cases and return 0 only if every one of them passed."""
     parser = argparse.ArgumentParser(description="Run the CalorAI eval set")
     parser.add_argument("--case", nargs="*", help="substring(s) of case ids to run")
     parser.add_argument("--repeat", type=int, default=1, help="repeat for more latency samples")
