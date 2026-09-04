@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calorai-agent"
+version = "0.1.0"
+description = "Conversational WhatsApp-style meal logging agent built on LangGraph + SQLite"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langgraph>=0.2.60",
+    "langchain-core>=0.3.28",
+    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.2.14",
+    "python-dotenv>=1.0.1",
+]
+
+[project.scripts]
+calorai = "cli:main"
+
+[tool.setuptools]
+packages = ["src", "src.tools", "src.models", "src.db", "src.memory", "src.utils"]
