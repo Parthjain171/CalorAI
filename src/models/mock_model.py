@@ -221,6 +221,23 @@ class ScriptedChatModel(BaseChatModel):
 
     # --- individual flows ----------------------------------------------------
 
+    @staticmethod
+    def _corrected_items(
+        meal_name: str, target: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Re-price the WHOLE meal with the corrected quantity substituted in.
+
+        "2 rotis and dal" corrected to "3 rotis" must become 3 rotis *plus the
+        dal* — re-pricing only the corrected food would silently drop the rest
+        of the meal.
+        """
+        items = _parse_foods(meal_name) or []
+        for item in items:
+            if item["food"] == target["food"]:
+                item["servings"] = target["servings"]
+                return items
+        return items + [target] if items else [target]
+
     def _correction(
         self, lowered: str, results: Dict[str, Any], rounds: int
     ) -> AIMessage:
@@ -230,20 +247,24 @@ class ScriptedChatModel(BaseChatModel):
             return AIMessage(content="", tool_calls=[_tool_call(
                 "get_meals", {"period": "today", "name_contains": target["food"]}
             )])
+
+        meals = results.get("get_meals", {}).get("meals", [])
+        if not meals:
+            return AIMessage(content="I couldn't find that meal to correct — what was it?")
+
         if rounds == 1:
+            items = self._corrected_items(meals[0]["meal_name"], target)
             return AIMessage(content="", tool_calls=[_tool_call(
-                "lookup_nutrition", {"items": [target]}
+                "lookup_nutrition", {"items": items}
             )])
         if rounds == 2:
-            meals = results.get("get_meals", {}).get("meals", [])
-            if not meals:
-                return AIMessage(content="I couldn't find that meal to correct — what was it?")
+            items = results["lookup_nutrition"]["items"]
             total = results["lookup_nutrition"]["total"]
+            name = ", ".join(f"{i['servings']:g} {i['matched_as']}" for i in items)
             return AIMessage(content="", tool_calls=[_tool_call("update_meal", {
-                "meal_id": meals[0]["meal_id"],
-                "meal_name": f"{target['servings']:g} {target['food']}s",
-                **total,
+                "meal_id": meals[0]["meal_id"], "meal_name": name, **total,
             })])
+
         updated = results.get("update_meal", {})
         totals = updated.get("daily_totals", {})
         return AIMessage(

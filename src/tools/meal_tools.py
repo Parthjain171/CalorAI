@@ -12,7 +12,14 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 
-from src.db.queries import daily_totals, insert_meal, list_meals
+from src.db.queries import (
+    daily_totals,
+    delete_meal_row,
+    get_meal,
+    insert_meal,
+    list_meals,
+    update_meal_row,
+)
 from src.utils.config import local_date_str
 from src.utils.user_context import get_user_id
 
@@ -143,4 +150,82 @@ def get_meals(
         "end_date": window_end,
         "count": len(meals),
         "meals": [_summarize(m) for m in meals],
+    }
+
+
+@tool("update_meal")
+def update_meal(
+    meal_id: int,
+    meal_name: Optional[str] = None,
+    calories: Optional[float] = None,
+    protein: Optional[float] = None,
+    carbs: Optional[float] = None,
+    fat: Optional[float] = None,
+    description: Optional[str] = None,
+    meal_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Correct a meal that is ALREADY logged. Edits the row in place.
+
+    This is the tool for "actually that was 3 rotis not 2", "make it a large",
+    "that was only half". Find the meal first with get_meals (name_contains is
+    the quickest way), re-price the corrected amount with lookup_nutrition, then
+    call this with the NEW TOTAL values for the whole meal — not the difference.
+
+    Never use log_meal to fix an existing meal; that double-counts the day.
+
+    Args:
+        meal_id: The id from get_meals. Required.
+        meal_name: Corrected label, e.g. "3 rotis".
+        calories: New TOTAL kcal for the meal (replaces, does not add).
+        protein: New total protein in grams.
+        carbs: New total carbohydrate in grams.
+        fat: New total fat in grams.
+        description: Corrected portion detail.
+        meal_type: Corrected breakfast/lunch/dinner/snack.
+    """
+    if meal_type:
+        meal_type = meal_type.lower().strip()
+        if meal_type not in MEAL_TYPES:
+            meal_type = None
+
+    updated = update_meal_row(
+        user_id=get_user_id(),
+        meal_id=int(meal_id),
+        meal_name=meal_name,
+        calories=calories,
+        protein=protein,
+        carbs=carbs,
+        fat=fat,
+        description=description,
+        meal_type=meal_type,
+    )
+    if updated is None:
+        return {
+            "error": f"No meal with id {meal_id}. Call get_meals to find the right one.",
+        }
+    return {
+        "updated": _summarize(updated),
+        "daily_totals": daily_totals(get_user_id(), updated["meal_date"]),
+    }
+
+
+@tool("delete_meal")
+def delete_meal(meal_id: int) -> Dict[str, Any]:
+    """Remove a logged meal entirely — "delete that", "I didn't actually eat it".
+
+    For fixing amounts use update_meal instead; deleting and re-logging loses
+    the original time the meal was recorded.
+
+    Args:
+        meal_id: The id from get_meals.
+    """
+    user_id = get_user_id()
+    meal = get_meal(user_id, int(meal_id))
+    if meal is None:
+        return {"error": f"No meal with id {meal_id}. Call get_meals to find the right one."}
+
+    delete_meal_row(user_id, int(meal_id))
+    return {
+        "deleted": _summarize(meal),
+        "daily_totals": daily_totals(user_id, meal["meal_date"]),
     }
