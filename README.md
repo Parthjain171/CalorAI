@@ -91,6 +91,16 @@ the conversation model, so the whole suite runs offline. It validates plumbing â
 tools, database, state transitions â€” **not** answer quality. See
 [Latency Numbers](#latency-numbers) for what that does and does not tell you.
 
+```bash
+CALORAI_MOCK=1 python eval/eval_runner.py       # macOS / Linux
+```
+```powershell
+$env:CALORAI_MOCK=1; python eval\eval_runner.py  # Windows PowerShell
+```
+
+Env-var syntax elsewhere in this README is bash; on PowerShell use
+`$env:NAME='value'` on its own line first.
+
 Only `ANTHROPIC_API_KEY` is needed for the defaults. Set `OPENAI_API_KEY` only if
 you point `TEXT_MODEL`/`VISION_MODEL` at a `gpt-*` model; the provider is
 inferred from the model id, so swapping is an env change, not a code change.
