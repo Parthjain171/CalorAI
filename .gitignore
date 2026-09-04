@@ -8,3 +8,7 @@ data/*.db*
 data/*.jsonl
 .pytest_cache/
 .DS_Store
+
+# Local real photos for real-model photo cases (never commit third-party images)
+assets/real_plate.*
+assets/Screenshot*

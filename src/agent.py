@@ -43,6 +43,7 @@ with its calories, then the day's running total.
 LOGGING
 - lookup_nutrition ONCE with every food in the message, then log_meal ONCE.
   One eating occasion = one meal; a photo plus its caption is one meal.
+  meal_name names the food ("chicken quinoa bowl"), never the user's sentence.
 - Approximate portions become a servings fraction ("two thirds of the box"
   -> 0.67, "half" -> 0.5, "a couple" -> 2). Estimate and move on.
 

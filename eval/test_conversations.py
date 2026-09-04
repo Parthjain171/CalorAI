@@ -14,13 +14,30 @@ correction that replaces rather than adds, half a plate costing about half.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from src.db.queries import daily_totals, insert_meal, list_meals, list_memories
 from src.memory.manager import remember
 from src.utils.config import local_date_str
 
-SAMPLE_IMAGE = "assets/sample_plate.png"
+
+def pick_sample_image() -> str:
+    """A real photo if one has been dropped in, else the synthetic sample.
+
+    The committed sample is a synthetic PNG (coloured circles) so the repo
+    carries no third-party photo. It is enough for the scripted double, but a
+    real vision model correctly says it cannot identify food in it. For
+    real-model runs, put any photo of a meal at ``assets/real_plate.jpg`` (or
+    .jpeg/.png - gitignored) and the photo cases will use it.
+    """
+    for candidate in ("assets/real_plate.jpg", "assets/real_plate.jpeg", "assets/real_plate.png"):
+        if Path(candidate).is_file():
+            return candidate
+    return "assets/sample_plate.png"
+
+
+SAMPLE_IMAGE = pick_sample_image()
 
 
 @dataclass

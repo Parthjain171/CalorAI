@@ -23,8 +23,10 @@ from src.db.schema import connection, reset_database
 from src.memory.manager import remember
 from src.utils.config import local_date_str, settings
 
+from eval.test_conversations import pick_sample_image
+
 USER = "demo"
-IMAGE = "assets/sample_plate.png"
+IMAGE = pick_sample_image()  # a real photo at assets/real_plate.jpg if present
 
 SCRIPT = [
     ("had 2 parathas and chai for breakfast", None),
