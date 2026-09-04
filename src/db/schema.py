@@ -134,10 +134,28 @@ def close_connection() -> None:
 
 
 def reset_database(db_path: Optional[Path] = None) -> None:
-    """Drop every row. Used by the eval runner to start from a clean slate."""
+    """Drop every row, and any persisted conversation checkpoints.
+
+    Used by the eval runner to start from a clean slate. Checkpoints are wiped
+    too so a stale thread from a previous run cannot bleed into a new one.
+    """
     with _db_lock:
         conn = get_connection(db_path)
         conn.executescript(
             "DELETE FROM meals; DELETE FROM memories; DELETE FROM nutrition_cache;"
         )
         conn.commit()
+
+    checkpoint_path = settings.checkpoint_db_path
+    if checkpoint_path.exists():
+        ckpt = sqlite3.connect(str(checkpoint_path))
+        try:
+            tables = [
+                row[0]
+                for row in ckpt.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            ]
+            for table in tables:
+                ckpt.execute(f'DELETE FROM "{table}"')
+            ckpt.commit()
+        finally:
+            ckpt.close()

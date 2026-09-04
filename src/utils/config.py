@@ -39,6 +39,7 @@ class Settings:
     vision_model: str
     nutrition_model: str
     db_path: Path
+    checkpoint_db_path: Path
     latency_log: Path
     tz_offset_hours: float
     max_memories: int
@@ -56,6 +57,7 @@ def _load() -> Settings:
         vision_model=_env("VISION_MODEL", "claude-sonnet-5"),
         nutrition_model=_env("NUTRITION_MODEL", "claude-haiku-4-5"),
         db_path=_resolve(_env("CALORAI_DB", "data/calorai.db")),
+        checkpoint_db_path=_resolve(_env("CALORAI_CHECKPOINT_DB", "data/checkpoints.db")),
         latency_log=_resolve(_env("CALORAI_LATENCY_LOG", "data/latency.jsonl")),
         tz_offset_hours=float(_env("CALORAI_TZ_OFFSET_HOURS", "5.5")),
         max_memories=int(_env("CALORAI_MAX_MEMORIES", "8")),

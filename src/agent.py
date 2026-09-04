@@ -183,8 +183,32 @@ def _agent_node(state: AgentState) -> Dict[str, Any]:
     return {"messages": [response]}
 
 
+def _sqlite_checkpointer() -> Any:
+    """Conversation checkpointer backed by SQLite, so a thread survives restarts.
+
+    With an in-memory saver, a clarifying question ("what did you graze on?")
+    asked just before the process exits is forgotten by the next session, and
+    the user's answer lands with no question to attach to. Persisting the
+    checkpoint keeps the thread intact across restarts. It lives in its own
+    file so the application schema in ``calorai.db`` stays clean.
+    """
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    path = settings.checkpoint_db_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # check_same_thread=False: LangGraph writes checkpoints from worker threads.
+    # SqliteSaver serialises its own access with an internal lock.
+    return SqliteSaver(sqlite3.connect(str(path), check_same_thread=False))
+
+
 def build_graph(checkpointer: Optional[Any] = None) -> Any:
-    """Compile the agent graph."""
+    """Compile the agent graph.
+
+    Pass ``checkpointer=MemorySaver()`` for throwaway sessions (tests); the
+    default persists conversation threads to SQLite.
+    """
     graph = StateGraph(AgentState)
     graph.add_node("vision", _vision)
     graph.add_node("prepare", _prepare)
@@ -198,14 +222,14 @@ def build_graph(checkpointer: Optional[Any] = None) -> Any:
     graph.add_conditional_edges("agent", tools_condition, {"tools": "tools", END: END})
     graph.add_edge("tools", "agent")
 
-    return graph.compile(checkpointer=checkpointer or MemorySaver())
+    return graph.compile(checkpointer=checkpointer or _sqlite_checkpointer())
 
 
 class CalorAIAgent:
     """Thin session wrapper around the compiled graph."""
 
-    def __init__(self) -> None:
-        self.graph = build_graph()
+    def __init__(self, persistent: bool = True) -> None:
+        self.graph = build_graph(None if persistent else MemorySaver())
 
     def chat(
         self, user_id: str, message: str, image_path: Optional[str] = None
