@@ -44,6 +44,7 @@ class Settings:
     tz_offset_hours: float
     max_memories: int
     max_history_tokens: int
+    max_reply_tokens: int
     mock: bool
     usda_api_key: str
 
@@ -66,6 +67,10 @@ def _load() -> Settings:
         # Recent-history budget the model sees per call; the full thread stays
         # in the checkpointer. Facts are in SQLite, so this can be small.
         max_history_tokens=int(_env("CALORAI_MAX_HISTORY_TOKENS", "2000")),
+        # Cap on one conversation reply (max_tokens). Some free tiers also cap
+        # output tokens per minute (Groq's qwen models: 1,000), and a request
+        # whose max_tokens exceeds that is rejected outright, not queued.
+        max_reply_tokens=int(_env("CALORAI_MAX_REPLY_TOKENS", "1024")),
         mock=_env("CALORAI_MOCK", "0") not in ("0", "false", "False"),
         # Off unless set. DEMO_KEY works but is capped at 10 requests/hour.
         usda_api_key=os.environ.get("USDA_API_KEY", "").strip(),

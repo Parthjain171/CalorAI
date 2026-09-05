@@ -7,16 +7,28 @@ red - guarding against assertions that are silently vacuous.
     python eval/test_eval_detects_regressions.py
 
 Runs against the scripted double (it patches that double's logic), so it needs
-no API key. Exit code 0 means every sabotage was detected.
+no API key: mock mode is forced here regardless of ``.env``, because sabotaging
+the double while a real model answers proves nothing. A case that *raises*
+(missing dependency, bad key) does not count as detected either - a crash is
+not the assertion doing its job. Exit code 0 means every sabotage was detected.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.utils.bootstrap import reexec_in_venv  # noqa: E402 - stdlib only
+
+reexec_in_venv(__file__)
+
+# Before src.utils.config is imported anywhere, so settings.mock is True from
+# the start; reload_settings() below covers the case where it already was.
+os.environ["CALORAI_MOCK"] = "1"
 
 from langchain_core.messages import AIMessage  # noqa: E402
 
@@ -26,6 +38,9 @@ from src.models.mock_model import (  # noqa: E402
     _parse_foods,
     _tool_call,
 )
+from src.utils.config import reload_settings  # noqa: E402
+
+reload_settings()
 
 
 def _correction_that_double_counts(self: Any, lowered: str, results: Any, rounds: int) -> AIMessage:
@@ -78,11 +93,14 @@ def main() -> int:
         finally:
             setattr(ScriptedChatModel, attribute, original)
 
-        if exit_code == 0:
+        if exit_code == eval_runner.EXIT_OK:
             missed.append(f"{case_id}: {description}")
             print(f"### MISSED - case {case_id} still passed, the assertion is too weak")
+        elif exit_code == eval_runner.EXIT_FAILED:
+            print("### detected")
         else:
-            print(f"### detected")
+            missed.append(f"{case_id}: {description} (case raised or did not run, exit {exit_code})")
+            print(f"### INCONCLUSIVE - case {case_id} raised or did not run; nothing was tested")
 
     print(f"\n{'=' * 72}")
     if missed:

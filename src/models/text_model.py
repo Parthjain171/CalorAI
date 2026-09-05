@@ -21,13 +21,52 @@ rebuilding it per turn adds avoidable latency to every message.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 from functools import lru_cache
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from src.utils.config import settings
+
+
+class _RetryNotice(logging.Filter):
+    """Turn the OpenAI client's silent 429 back-off into a visible line.
+
+    On Groq's free tier (8,000 tokens/minute per model) the second call in a
+    minute is rejected with a 429 and the SDK sleeps for the ``retry-after``
+    the server asked for, up to a minute, before retrying. From the chat that
+    looked like a 40 s model call with nothing on screen. The SDK logs the
+    sleep at INFO as "Retrying request in N seconds"; print that as one
+    short line and swallow the record so it does not also reach the root
+    logger.
+    """
+
+    _pattern = re.compile(r"Retrying request in ([\d.]+) seconds")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        match = self._pattern.search(record.getMessage())
+        if match:
+            print(
+                f"  (rate limited by the provider, waiting {float(match.group(1)):.0f}s)",
+                flush=True,
+            )
+        return False
+
+
+def _install_retry_notice() -> None:
+    logger = logging.getLogger("openai._base_client")
+    if not any(isinstance(f, _RetryNotice) for f in logger.filters):
+        logger.addFilter(_RetryNotice())
+    # The retry line is emitted at INFO; the root logger's default WARNING
+    # level would drop it before the filter ever sees it.
+    if logger.level == logging.NOTSET or logger.level > logging.INFO:
+        logger.setLevel(logging.INFO)
+
+
+_install_retry_notice()
 
 
 def provider_for(model_id: str) -> str:
@@ -90,8 +129,16 @@ def _build(model_id: str, temperature: float, max_tokens: int) -> BaseChatModel:
     # For "which tool, with what arguments" that is wasted budget and latency,
     # so default to low effort; override with MODEL_REASONING_EFFORT.
     extra: dict[str, Any] = {}
-    if "gpt-oss" in model_id.lower() or model_id.lower().startswith(("o1", "o3", "o4")):
+    lowered = model_id.lower()
+    if "gpt-oss" in lowered or lowered.startswith(("o1", "o3", "o4")):
         extra["reasoning_effort"] = os.environ.get("MODEL_REASONING_EFFORT", "low")
+    elif "qwen" in lowered:
+        # Groq's qwen3 models only accept "none" or "default". Left on, the
+        # model thinks for ~200 tokens before a 30-token reply, and on the
+        # free tier that thinking counts against a 1,000 output-tokens-per-
+        # minute cap (measured: 193 -> 29 completion tokens with it off).
+        effort = os.environ.get("MODEL_REASONING_EFFORT", "none")
+        extra["reasoning_effort"] = "none" if effort in ("none", "low", "minimal") else "default"
     return ChatOpenAI(
         model=model_id,
         temperature=temperature,

@@ -8,7 +8,9 @@ Each case runs against a fresh user id, so cases cannot contaminate one another
 while still sharing one database file - which is also a standing check that
 per-user isolation actually holds.
 
-Exit code is 0 only if every case passes, so this is usable as a CI gate.
+Exit codes: 0 when every case passes, 1 when an assertion failed, 3 when at
+least one case raised instead of finishing (a crash is not a verdict), 2 when
+no case matched. Non-zero either way, so this is usable as a CI gate.
 """
 
 from __future__ import annotations
@@ -23,11 +25,17 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.utils.bootstrap import reexec_in_venv  # noqa: E402 - stdlib only
+
+reexec_in_venv(__file__)
+
 from eval.test_conversations import CASES, Case  # noqa: E402
 from src.utils import latency  # noqa: E402
 from src.utils.config import settings  # noqa: E402
 
 GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+
+EXIT_OK, EXIT_FAILED, EXIT_NO_MATCH, EXIT_RAISED = 0, 1, 2, 3
 
 
 def _run_case(agent: Any, case: Case, verbose: bool, pace: float = 0.0) -> Dict[str, Any]:
@@ -59,14 +67,24 @@ def _run_case(agent: Any, case: Case, verbose: bool, pace: float = 0.0) -> Dict[
                 print(f"    {DIM}< {reply}{RESET}")
         problems = case.check(user_id, replies, context)
     except Exception:
-        problems = ["raised: " + traceback.format_exc(limit=3).strip().splitlines()[-1]]
+        # The last line of the formatted trace is LangGraph's "During task with
+        # name 'agent'" wrapper, which hides the real cause (a missing module,
+        # a 401, a bad key). Report the innermost exception instead.
+        exc = sys.exc_info()[1]
+        while exc is not None and exc.__cause__ is not None:
+            exc = exc.__cause__
+        problems = [f"raised: {type(exc).__name__}: {exc}"]
+        raised = True
         if verbose:
             traceback.print_exc()
+    else:
+        raised = False
 
     return {
         "case": case,
         "user_id": user_id,
         "passed": not problems,
+        "raised": raised,
         "problems": problems,
         "seconds": time.perf_counter() - started,
         "replies": replies,
@@ -91,7 +109,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         selected = [c for c in CASES if any(token in c.id for token in args.case)]
         if not selected:
             print(f"no cases matched {args.case}")
-            return 2
+            return EXIT_NO_MATCH
 
     from src.agent import CalorAIAgent
     from src.db.schema import reset_database
@@ -136,7 +154,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print(f"\nLatency\n{'-' * 72}")
     print(latency.format_report(latency.spans()))
-    return 0 if passed == total else 1
+    if passed == total:
+        return EXIT_OK
+    if any(r["raised"] for r in results):
+        print(f"{YELLOW}at least one case raised instead of finishing - fix the "
+              f"environment before reading these results{RESET}")
+        return EXIT_RAISED
+    return EXIT_FAILED
 
 
 if __name__ == "__main__":

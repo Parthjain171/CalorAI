@@ -50,3 +50,46 @@ def test_streaming_yields_the_same_reply():
     a = _agent()
     streamed = "".join(a.stream_chat("u", "how am I doing?"))
     assert "cal" in streamed
+
+
+def test_bounded_history_never_trims_the_current_turn(monkeypatch):
+    """A turn larger than the whole budget must still reach the model intact.
+
+    Regression for the reply "I'm ready to log your meals. What did you eat?"
+    arriving right after a meal was logged: the trimmer dropped the current
+    turn - human message, tool calls and results - and the model answered from
+    the system prompt alone.
+    """
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    import dataclasses
+
+    from src import agent as agent_module
+
+    # Settings is frozen, so swap the module's reference for a modified copy.
+    monkeypatch.setattr(
+        agent_module, "settings", dataclasses.replace(agent_module.settings, max_history_tokens=50)
+    )
+
+    big = "x " * 400
+    earlier = [HumanMessage("had 2 rotis"), AIMessage("Logged 2 rotis, 220 cal.")]
+    current = [
+        HumanMessage("half of this was my brother's\n\n[VISION] " + big),
+        AIMessage("", tool_calls=[{"name": "log_meal", "args": {}, "id": "c1", "type": "tool_call"}]),
+        ToolMessage(big, tool_call_id="c1"),
+    ]
+    seen = agent_module._bounded_history(earlier + current)
+    assert seen[-len(current):] == current
+    assert earlier[0] not in seen  # over budget, so older turns are what gets cut
+
+
+def test_vision_note_spells_out_the_caption_portion():
+    from src.models.vision_model import format_vision_note
+
+    analysis = {
+        "foods": [{"food": "rice", "servings": 1.0}], "confidence": 0.9,
+        "description": "", "question": None, "model": "m", "error": None,
+    }
+    assert "multiply EVERY serving above by 0.5" in format_vision_note(analysis, "half of this was my brother's")
+    assert "by 0.67" in format_vision_note(analysis, "ate two thirds of it")
+    assert "multiply" not in format_vision_note(analysis, "lunch today")

@@ -16,11 +16,16 @@ import sys
 import time
 from typing import List, Optional
 
-from src.agent import CalorAIAgent
-from src.db.queries import daily_totals, list_meals, list_memories
-from src.db.schema import get_connection, reset_database
-from src.utils.config import settings
-from src.utils.latency import format_report, load_spans
+
+from src.utils.bootstrap import reexec_in_venv  # stdlib-only import
+
+reexec_in_venv(__file__)
+
+from src.agent import CalorAIAgent  # noqa: E402
+from src.db.queries import daily_totals, list_meals, list_memories  # noqa: E402
+from src.db.schema import get_connection, reset_database  # noqa: E402
+from src.utils.config import settings  # noqa: E402
+from src.utils.latency import format_report, load_spans  # noqa: E402
 
 BANNER = """CalorAI - text me what you ate.
   "had 2 parathas and chai"     "how am I doing today?"
@@ -144,6 +149,16 @@ def _handle_command(
 
 def main(argv: Optional[List[str]] = None) -> int:
     """Entry point: run the REPL, or a one-shot message/image, or a report."""
+    # Windows consoles and pipes default to a legacy code page; a reply with a
+    # curly quote or a narrow no-break space (gpt-oss emits both) then dies
+    # mid-stream with "'charmap' codec can't encode character". Reconfigure
+    # instead of crashing; replace what still cannot be shown.
+    for stream_ in (sys.stdout, sys.stderr):
+        if hasattr(stream_, "reconfigure"):
+            try:
+                stream_.reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
     parser = argparse.ArgumentParser(description="CalorAI conversational meal logger")
     parser.add_argument("--user", default="default", help="user id (isolates meal logs)")
     parser.add_argument("--image", help="send one photo, print the reply, exit")

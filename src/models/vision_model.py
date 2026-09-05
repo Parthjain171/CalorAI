@@ -210,8 +210,34 @@ def analyze_image(image_path: str, caption: str = "") -> Dict[str, Any]:
         }
 
 
-def format_vision_note(analysis: Dict[str, Any]) -> str:
-    """Render the vision result as the message the text model actually reads."""
+# Portion phrases a caption can carry, checked longest-first so "two thirds"
+# is not read as "a third". The number is stated in the note so the text model
+# has a figure to multiply by rather than a phrase to interpret: gpt-oss-120b
+# logged the full plate under "half of this was my brother's" without it.
+_CAPTION_PORTIONS: List[tuple[str, float]] = [
+    ("two thirds", 0.67), ("two-thirds", 0.67), ("three quarters", 0.75),
+    ("three-quarters", 0.75), ("a third", 0.33), ("one third", 0.33),
+    ("a quarter", 0.25), ("one quarter", 0.25), ("quarter of", 0.25),
+    ("half", 0.5),
+]
+
+
+def portion_from_caption(caption: str) -> float | None:
+    """The fraction of the plate the user says they ate, or None if unstated."""
+    lowered = (caption or "").lower()
+    for phrase, value in _CAPTION_PORTIONS:
+        if phrase in lowered:
+            return value
+    return None
+
+
+def format_vision_note(analysis: Dict[str, Any], caption: str = "") -> str:
+    """Render the vision result as the message the text model actually reads.
+
+    ``caption`` is only inspected for a portion phrase. The FOODS line always
+    lists the whole plate, so the arithmetic still happens in exactly one place
+    (the text model), just with the multiplier spelled out as a number.
+    """
     if analysis.get("error"):
         return (
             "[VISION] The photo could not be analysed "
@@ -239,6 +265,12 @@ def format_vision_note(analysis: Dict[str, Any]) -> str:
             "\nTreat this and anything the user typed as ONE meal. If they"
             " described a different portion, scale these servings accordingly."
         )
+        portion = portion_from_caption(caption)
+        if portion is not None:
+            note += (
+                f"\nThe caption says they ate {portion:g} of this plate: multiply"
+                f" EVERY serving above by {portion:g} before lookup_nutrition."
+            )
     if analysis["description"]:
         note += f"\n(Plate looked like: {analysis['description'].rstrip('.')}.)"
     return note

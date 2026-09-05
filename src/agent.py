@@ -69,11 +69,16 @@ fix; that double-counts.
 TOTALS: "how am I doing" -> get_daily_totals and quote the real numbers.
 
 MEMORY: durable facts (diet, goals, habits, what "my usual" means) ->
-store_memory, silently, same turn. Never meals or moods. "same as yesterday"
+store_memory, silently, same turn. Never meals or moods. "My usual breakfast
+is 2 idlis and sambar" describes a habit, not something eaten now: store_memory
+(category usual_meal), do NOT log_meal, and say you will remember it. Log it
+only when they say they had it. "same as yesterday"
 -> get_meals(period="yesterday"), then ONE response containing a log_meal call
 for EVERY returned meal, reusing its stored calories and macros, with NO
 meal_date (they are eaten today), then reply with the new total. "my usual"
--> recall_memory.
+or "the usual" means they ATE it just now: take the stored usual meal (from
+WHAT YOU KNOW or recall_memory), lookup_nutrition and log_meal it, then
+confirm with calories and the total. Never just recite what the usual is.
 """
 
 
@@ -128,7 +133,7 @@ def _vision(state: AgentState) -> Dict[str, Any]:
     caption = _latest_user_text(state["messages"])
     with measure("vision_model", model=settings.vision_model):
         analysis = analyze_image(image_path, caption=caption)
-    note = format_vision_note(analysis)
+    note = format_vision_note(analysis, caption)
 
     # Merge the note INTO the user's own message rather than appending a new
     # one. A separate message would become the "latest user message", hiding the
@@ -168,23 +173,43 @@ def _bounded_history(messages: List[BaseMessage]) -> List[BaseMessage]:
     a free-tier token budget was exhausted by turn three. Facts live in SQLite,
     not in the transcript, so only recent context is needed.
 
-    Trimmed from the end, starting on a human message, never splitting a tool
-    call from its result. Budget: ``CALORAI_MAX_HISTORY_TOKENS``.
+    The current turn - the latest human message and every tool call and result
+    after it - is always kept whole, whatever the budget. Trimming it was the
+    "I'm ready to log your meals. What did you eat?" bug: a photo turn with a
+    vision note and two tool rounds outgrew ``CALORAI_MAX_HISTORY_TOKENS``, the
+    trimmer (which drops from the front and must start on a human message)
+    threw the whole turn away, and the model answered from the system prompt
+    alone, right after it had logged the meal. Only earlier turns are trimmed,
+    from the front, starting on a human message, never splitting a tool call
+    from its result.
     """
+    current_start = 0
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            current_start = index
+            break
+    current, earlier = messages[current_start:], messages[:current_start]
+    if not earlier:
+        return list(current)
+
     try:
         from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 
-        return trim_messages(
-            messages,
-            max_tokens=settings.max_history_tokens,
+        remaining = settings.max_history_tokens - count_tokens_approximately(current)
+        if remaining <= 0:
+            return list(current)
+        kept = trim_messages(
+            earlier,
+            max_tokens=remaining,
             token_counter=count_tokens_approximately,
             strategy="last",
             start_on="human",
             include_system=False,
             allow_partial=False,
         )
+        return list(kept) + list(current)
     except Exception:  # noqa: BLE001 - never let trimming break a turn
-        return messages[-12:]
+        return list(earlier[-12:]) + list(current)
 
 
 _INVALID_TOOL_MARKERS = ("tool_use_failed", "not in request.tools", "unknown tool")
@@ -221,7 +246,9 @@ def _agent_node(state: AgentState) -> Dict[str, Any]:
     surfacing a provider error to the user.
     """
     with measure("node_agent_setup"):
-        model = get_chat_model(settings.text_model).bind_tools(ALL_TOOLS)
+        model = get_chat_model(
+            settings.text_model, max_tokens=settings.max_reply_tokens
+        ).bind_tools(ALL_TOOLS)
         history = _bounded_history(list(state["messages"]))
         conversation = [SystemMessage(content=state["system_prompt"])] + history
     with measure("text_model_call", model=settings.text_model) as span:
@@ -331,7 +358,7 @@ class CalorAIAgent:
             return
         with measure("warm_models"):
             for model_id, temperature, max_tokens in (
-                (settings.text_model, 0.0, 1024),
+                (settings.text_model, 0.0, settings.max_reply_tokens),
                 (settings.nutrition_model, 0.0, 600),
                 (settings.vision_model, 0.0, 700),
             ):
