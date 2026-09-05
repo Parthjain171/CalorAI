@@ -9,6 +9,8 @@
 
 A calorie tracker you use by texting, like you would text a friend. No forms.
 
+[![Watch the demo](https://img.shields.io/badge/demo-watch%20the%20video-C4302B?logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1z9W_38Dob9AtGs0zLuZ7z12TR20QV8vf/view?usp=sharing)
+
 ```
 you:     had 2 rotis and dal for lunch
 calorai: Got it, 2 rotis and dal for lunch, 370 kcal. Total today 370.
